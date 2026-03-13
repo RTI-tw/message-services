@@ -20,10 +20,16 @@ PUBSUB_SUB_POST="${PUBSUB_SUB_POST:-${PUBSUB_TOPIC_POST}-sub}"
 PUBSUB_SUB_COMMENT="${PUBSUB_SUB_COMMENT:-${PUBSUB_TOPIC_COMMENT}-sub}"
 PUBSUB_SUB_REACTION="${PUBSUB_SUB_REACTION:-${PUBSUB_TOPIC_REACTION}-sub}"
 
+# 若設定 PUBSUB_PUSH_ENDPOINT（例如 https://xxx.run.app/pubsub/push），則建立 Push subscription
+PUBSUB_PUSH_ENDPOINT="${PUBSUB_PUSH_ENDPOINT:-}"
+
 echo "使用專案：${PROJECT_ID}"
 echo "Post topic:     ${PUBSUB_TOPIC_POST} (sub: ${PUBSUB_SUB_POST})"
 echo "Comment topic:  ${PUBSUB_TOPIC_COMMENT} (sub: ${PUBSUB_SUB_COMMENT})"
 echo "Reaction topic: ${PUBSUB_TOPIC_REACTION} (sub: ${PUBSUB_SUB_REACTION})"
+if [[ -n "${PUBSUB_PUSH_ENDPOINT}" ]]; then
+  echo "Push endpoint:  ${PUBSUB_PUSH_ENDPOINT}"
+fi
 echo
 
 create_topic_if_not_exists() {
@@ -49,9 +55,16 @@ create_sub_if_not_exists() {
     echo "Subscription '${sub}' 已存在，略過建立。"
   else
     echo "建立 subscription '${sub}' (topic: '${topic}')..."
-    gcloud pubsub subscriptions create "${sub}" \
-      --topic "${topic}" \
-      --project="${PROJECT_ID}"
+    if [[ -n "${PUBSUB_PUSH_ENDPOINT}" ]]; then
+      gcloud pubsub subscriptions create "${sub}" \
+        --topic "${topic}" \
+        --push-endpoint="${PUBSUB_PUSH_ENDPOINT}" \
+        --project="${PROJECT_ID}"
+    else
+      gcloud pubsub subscriptions create "${sub}" \
+        --topic "${topic}" \
+        --project="${PROJECT_ID}"
+    fi
   fi
 }
 

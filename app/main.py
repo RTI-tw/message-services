@@ -1,8 +1,14 @@
-from fastapi import Depends, FastAPI, HTTPException, status
+import asyncio
+import base64
+import json
+import logging
+
+from fastapi import FastAPI, HTTPException, Request, status
 
 from . import schemas
 from .pubsub_client import publisher
 
+logger = logging.getLogger(__name__)
 app = FastAPI(title="Forum Message Services", version="0.1.0")
 
 
@@ -72,6 +78,40 @@ async def update_reaction(reaction: schemas.Reaction):
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     return {"message_id": message_id}
+
+
+@app.post("/pubsub/push")
+async def pubsub_push(request: Request):
+    """
+    Pub/Sub Push 入口：收到訊息後解碼並轉交給 subscriber 寫入 Keystone。
+    回傳 2xx 表示 ack，非 2xx 會讓 Pub/Sub 重送。
+    """
+    try:
+        body = await request.json()
+    except Exception as e:
+        logger.warning("Invalid push body: %s", e)
+        raise HTTPException(status_code=400, detail="Invalid JSON") from e
+
+    message = body.get("message") if isinstance(body, dict) else None
+    if not message or "data" not in message:
+        logger.warning("Missing message.data in push body")
+        raise HTTPException(status_code=400, detail="Missing message.data")
+
+    try:
+        raw = base64.b64decode(message["data"])
+        payload = json.loads(raw.decode("utf-8"))
+    except (ValueError, KeyError, json.JSONDecodeError) as e:
+        logger.warning("Failed to decode push data: %s", e)
+        raise HTTPException(status_code=400, detail="Invalid message.data") from e
+
+    try:
+        from subscriber.handlers import handle_event
+
+        await asyncio.to_thread(handle_event, payload)
+        return {}
+    except Exception as e:
+        logger.exception("handle_event failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/health")

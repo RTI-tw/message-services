@@ -4,7 +4,7 @@ The services for the message queue for the forum data
 
 ## FastAPI + GCP Pub/Sub API
 
-這個專案提供一個使用 FastAPI 撰寫的 HTTP API，負責將論壇的 `post`、`comment`、`reaction` 的建立與更新事件，送到 GCP Pub/Sub 對應的 topic。
+這個專案提供一個使用 FastAPI 撰寫的 HTTP API，負責將論壇的 `post`、`comment`、`reaction` 的建立與更新事件，送到 GCP Pub/Sub 對應的 topic；同時提供 `POST /pubsub/push` 接收 Pub/Sub Push 訊息，並依事件內容呼叫 Keystone GraphQL 寫入資料。
 
 ### 安裝依賴
 
@@ -22,9 +22,9 @@ pip install -r requirements.txt
 再設定以下環境變數：
 
 - `GCP_PROJECT_ID`: GCP 專案 ID（必填）
-- `PUBSUB_TOPIC_POST`: Post 事件的 topic 名稱（預設：`forum-post-events`）
-- `PUBSUB_TOPIC_COMMENT`: Comment 事件的 topic 名稱（預設：`forum-comment-events`）
-- `PUBSUB_TOPIC_REACTION`: Reaction 事件的 topic 名稱（預設：`forum-reaction-events`）
+- `PUBSUB_TOPIC_POST` / `PUBSUB_TOPIC_COMMENT` / `PUBSUB_TOPIC_REACTION`: 各事件 topic 名稱
+- `KEYSTONE_GQL_ENDPOINT`: Keystone GraphQL URL（Push 收到訊息時寫入用）
+- `KEYSTONE_AUTH_TOKEN`: 選填，呼叫 Keystone 時帶入
 
 ### 啟動服務
 

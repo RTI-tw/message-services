@@ -13,11 +13,14 @@
 ```bash
 export PROJECT_ID="你的專案 ID"
 export REGION="asia-east1"              # 或你偏好的區域
-export SERVICE_NAME="message-services"  # Cloud Run 服務名稱
+export SERVICE_NAME="message-services"   # Cloud Run 服務名稱
 
 export PUBSUB_TOPIC_POST="forum-post-events"
 export PUBSUB_TOPIC_COMMENT="forum-comment-events"
 export PUBSUB_TOPIC_REACTION="forum-reaction-events"
+
+# 訂閱端改為 Push 時，部署完成後設成 Cloud Run URL + /pubsub/push
+export PUBSUB_PUSH_ENDPOINT=""   # 例如 https://message-services-dev-xxx.asia-east1.run.app/pubsub/push
 ```
 
 ---
@@ -74,9 +77,9 @@ gcloud builds submit --config cloudbuild.yaml .
 
 ---
 
-## Step 4. 部署到 Cloud Run
+## Step 4. 部署到 Cloud Run（單一服務：API + Pub/Sub Push 訂閱端）
 
-以下以「公開 HTTP 服務」為例：
+同一個服務同時提供：發佈事件的 API（publisher）與接收 Pub/Sub Push 的 endpoint（subscriber 邏輯）。需設定 Keystone GraphQL 相關變數，Push 收到訊息時才會寫入 Keystone。
 
 ```bash
 gcloud run deploy "${SERVICE_NAME}" \
@@ -84,19 +87,20 @@ gcloud run deploy "${SERVICE_NAME}" \
   --platform managed \
   --region "${REGION}" \
   --allow-unauthenticated \
-  --set-env-vars "GCP_PROJECT_ID=${PROJECT_ID},PUBSUB_TOPIC_POST=${PUBSUB_TOPIC_POST},PUBSUB_TOPIC_COMMENT=${PUBSUB_TOPIC_COMMENT},PUBSUB_TOPIC_REACTION=${PUBSUB_TOPIC_REACTION}"
+  --set-env-vars "GCP_PROJECT_ID=${PROJECT_ID},PUBSUB_TOPIC_POST=${PUBSUB_TOPIC_POST},PUBSUB_TOPIC_COMMENT=${PUBSUB_TOPIC_COMMENT},PUBSUB_TOPIC_REACTION=${PUBSUB_TOPIC_REACTION},KEYSTONE_GQL_ENDPOINT=${KEYSTONE_GQL_ENDPOINT},KEYSTONE_AUTH_TOKEN=${KEYSTONE_AUTH_TOKEN}"
 ```
 
 部署成功後，Cloud Run 會回傳一個 URL，例如：
 
 ```text
-https://message-services-xxxxxx-uc.a.run.app
+https://message-services-dev-xxxxxx.asia-east1.run.app
 ```
 
-你可以用這個 URL 呼叫：
+此 URL 可用於：
 
-- 健康檢查：`GET /health`
+- 健康檢查：`GET /health`、`GET /healthz`
 - 發佈事件：`POST /post/create`、`/post/update`、`/comment/create`、`/comment/update`、`/reaction/create`、`/reaction/update`
+- Pub/Sub Push：`POST /pubsub/push`（由 GCP Pub/Sub 呼叫，不需手動打）
 
 ---
 
@@ -115,65 +119,39 @@ gcloud pubsub subscriptions pull test-post-sub --auto-ack --limit 10
 
 ---
 
-## Step 6. 部署 Subscriber（消費 Pub/Sub 訊息並寫入 Keystone）
+## Step 6. 使用 Pub/Sub Push 讓訊息寫入 Keystone
 
-Subscriber 也是用同一個 image，只是啟動指令不同（執行 `subscriber.main`）。
+訂閱端改為 **Push**：Pub/Sub 會把訊息 POST 到同一個 Cloud Run 服務的 `/pubsub/push`，由該 endpoint 解碼並呼叫 Keystone GraphQL（與原本 subscriber 相同邏輯）。
 
-### 6.1 準備 subscriptions
+### 6.1 Keystone 環境變數
 
-如果你有跑 `scripts/setup_pubsub.sh`，會自動為三個 topic 建好 subscriptions，預設名稱為：
-
-- `${PUBSUB_TOPIC_POST}-sub`
-- `${PUBSUB_TOPIC_COMMENT}-sub`
-- `${PUBSUB_TOPIC_REACTION}-sub`
-
-你也可以用 `PUBSUB_SUB_POST` / `PUBSUB_SUB_COMMENT` / `PUBSUB_SUB_REACTION` 三個環境變數自訂名稱，腳本會跟著用。
-
-不想用腳本的話，也可以手動建立：
-
-```bash
-gcloud pubsub subscriptions create "${PUBSUB_TOPIC_POST}-sub" \
-  --topic "${PUBSUB_TOPIC_POST}"
-
-gcloud pubsub subscriptions create "${PUBSUB_TOPIC_COMMENT}-sub" \
-  --topic "${PUBSUB_TOPIC_COMMENT}"
-
-gcloud pubsub subscriptions create "${PUBSUB_TOPIC_REACTION}-sub" \
-  --topic "${PUBSUB_TOPIC_REACTION}"
-```
-
-然後設定環境變數：
-
-```bash
-export PUBSUB_SUB_POST="${PUBSUB_TOPIC_POST}-sub"
-export PUBSUB_SUB_COMMENT="${PUBSUB_TOPIC_COMMENT}-sub"
-export PUBSUB_SUB_REACTION="${PUBSUB_TOPIC_REACTION}-sub"
-```
-
-### 6.2 Keystone GraphQL 相關環境變數
+部署 Step 4 時請一併設定（或事後在 Cloud Run 介面補上）：
 
 ```bash
 export KEYSTONE_GQL_ENDPOINT="https://your-keystone-host/api/graphql"
 export KEYSTONE_AUTH_TOKEN="your-token-if-needed"
 ```
 
-> `KEYSTONE_AUTH_TOKEN` 如果不需要認證可以留空；若需要，subscriber 會自動在 HTTP Header 加上 `Authorization: Bearer <token>`。
+> `KEYSTONE_AUTH_TOKEN` 若不需要認證可留空；需要時 Push handler 會帶 `Authorization: Bearer <token>` 呼叫 Keystone。
 
-### 6.3 以 Cloud Run 部署 Subscriber
+### 6.2 建立 Push subscriptions
 
-可以用同一個 image，改成執行 subscriber：
+**先完成 Step 4 部署**，取得 Cloud Run URL 後：
 
 ```bash
-gcloud run deploy "${SERVICE_NAME}-subscriber" \
-  --image "gcr.io/${PROJECT_ID}/message-services" \
-  --platform managed \
-  --region "${REGION}" \
-  --no-allow-unauthenticated \
-  --set-env-vars "GCP_PROJECT_ID=${PROJECT_ID},PUBSUB_SUB_POST=${PUBSUB_SUB_POST},PUBSUB_SUB_COMMENT=${PUBSUB_SUB_COMMENT},PUBSUB_SUB_REACTION=${PUBSUB_SUB_REACTION},KEYSTONE_GQL_ENDPOINT=${KEYSTONE_GQL_ENDPOINT},KEYSTONE_AUTH_TOKEN=${KEYSTONE_AUTH_TOKEN}" \
-  --command "python" \
-  --args "-m,subscriber.main"
+export PUBSUB_PUSH_ENDPOINT="https://你的服務URL/pubsub/push"
+./scripts/setup_pubsub.sh
 ```
 
-> 這個 Cloud Run service 不需要對外暴露 HTTP，因此可以用 `--no-allow-unauthenticated`，純粹當成一個長時間執行的 subscriber worker。
+- 若 **尚未建立** 過 subscription：腳本會建立三個 **Push** subscription，並指向 `PUBSUB_PUSH_ENDPOINT`。
+- 若 **已存在** subscription（先前為 Pull）：腳本會略過。要改成 Push 請手動更新或刪除後重跑：
+
+  ```bash
+  gcloud pubsub subscriptions update "${PUBSUB_TOPIC_POST}-sub" \
+    --push-endpoint="${PUBSUB_PUSH_ENDPOINT}"
+  # 同理更新 comment、reaction 的 subscription
+  ```
+
+之後當有事件發佈到 topic 時，Pub/Sub 會 POST 到 `https://你的服務URL/pubsub/push`，服務會解碼訊息並依 `entity`/`operation` 呼叫 Keystone 的 create/update mutation。
 
 
