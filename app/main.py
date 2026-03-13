@@ -78,3 +78,8 @@ async def update_reaction(reaction: schemas.Reaction):
 async def health_check():
     return {"status": "ok"}
 
+
+@app.get("/healthz")
+async def healthz():
+    return {"status": "ok"}
+

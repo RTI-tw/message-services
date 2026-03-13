@@ -83,7 +83,6 @@ gcloud run deploy "${SERVICE_NAME}" \
   --platform managed \
   --region "${REGION}" \
   --allow-unauthenticated \
-  --port 8000 \
   --set-env-vars "GCP_PROJECT_ID=${PROJECT_ID},PUBSUB_TOPIC_POST=${PUBSUB_TOPIC_POST},PUBSUB_TOPIC_COMMENT=${PUBSUB_TOPIC_COMMENT},PUBSUB_TOPIC_REACTION=${PUBSUB_TOPIC_REACTION}"
 ```
 
@@ -161,7 +160,6 @@ gcloud run deploy "${SERVICE_NAME}-subscriber" \
   --platform managed \
   --region "${REGION}" \
   --no-allow-unauthenticated \
-  --port 8000 \
   --set-env-vars "GCP_PROJECT_ID=${PROJECT_ID},PUBSUB_SUB_POST=${PUBSUB_SUB_POST},PUBSUB_SUB_COMMENT=${PUBSUB_SUB_COMMENT},PUBSUB_SUB_REACTION=${PUBSUB_SUB_REACTION},KEYSTONE_GQL_ENDPOINT=${KEYSTONE_GQL_ENDPOINT},KEYSTONE_AUTH_TOKEN=${KEYSTONE_AUTH_TOKEN}" \
   --command "python" \
   --args "-m,subscriber.main"
