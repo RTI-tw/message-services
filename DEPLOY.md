@@ -15,9 +15,14 @@ export PROJECT_ID="你的專案 ID"
 export REGION="asia-east1"              # 或你偏好的區域
 export SERVICE_NAME="message-services"   # Cloud Run 服務名稱
 
-export PUBSUB_TOPIC_POST="forum-post-events"
-export PUBSUB_TOPIC_COMMENT="forum-comment-events"
-export PUBSUB_TOPIC_REACTION="forum-reaction-events"
+export PUBSUB_ENV="dev"                 # 環境名稱（例：dev / stg / prod）
+
+# 若未顯式設定 PUBSUB_TOPIC_*，setup_pubsub.sh 會依 PUBSUB_ENV 自動組合名稱：
+#   <PUBSUB_ENV>-forum-post-events / <PUBSUB_ENV>-forum-comment-events / ...
+# 也可以自行指定完整 topic 名稱覆寫這些預設值：
+# export PUBSUB_TOPIC_POST="dev-forum-post-events"
+# export PUBSUB_TOPIC_COMMENT="dev-forum-comment-events"
+# export PUBSUB_TOPIC_REACTION="dev-forum-reaction-events"
 
 # 訂閱端改為 Push 時，部署完成後設成 Cloud Run URL + /pubsub/push
 export PUBSUB_PUSH_ENDPOINT=""   # 例如 https://message-services-dev-xxx.asia-east1.run.app/pubsub/push

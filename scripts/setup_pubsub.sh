@@ -11,9 +11,18 @@ if [[ -z "${PROJECT_ID}" || "${PROJECT_ID}" == "(unset)" ]]; then
   exit 1
 fi
 
-PUBSUB_TOPIC_POST="${PUBSUB_TOPIC_POST:-forum-post-events}"
-PUBSUB_TOPIC_COMMENT="${PUBSUB_TOPIC_COMMENT:-forum-comment-events}"
-PUBSUB_TOPIC_REACTION="${PUBSUB_TOPIC_REACTION:-forum-reaction-events}"
+# 用 PUBSUB_ENV 來區分環境（例如 dev/stg/prod），只在未顯式指定 PUBSUB_TOPIC_* 時套用
+PUBSUB_ENV="${PUBSUB_ENV:-}"
+
+if [[ -n "${PUBSUB_ENV}" ]]; then
+  PUBSUB_TOPIC_POST="${PUBSUB_TOPIC_POST:-${PUBSUB_ENV}-forum-post-events}"
+  PUBSUB_TOPIC_COMMENT="${PUBSUB_TOPIC_COMMENT:-${PUBSUB_ENV}-forum-comment-events}"
+  PUBSUB_TOPIC_REACTION="${PUBSUB_TOPIC_REACTION:-${PUBSUB_ENV}-forum-reaction-events}"
+else
+  PUBSUB_TOPIC_POST="${PUBSUB_TOPIC_POST:-forum-post-events}"
+  PUBSUB_TOPIC_COMMENT="${PUBSUB_TOPIC_COMMENT:-forum-comment-events}"
+  PUBSUB_TOPIC_REACTION="${PUBSUB_TOPIC_REACTION:-forum-reaction-events}"
+fi
 
 # 預設 subscription 名稱：<topic>-sub
 PUBSUB_SUB_POST="${PUBSUB_SUB_POST:-${PUBSUB_TOPIC_POST}-sub}"
@@ -24,6 +33,9 @@ PUBSUB_SUB_REACTION="${PUBSUB_SUB_REACTION:-${PUBSUB_TOPIC_REACTION}-sub}"
 PUBSUB_PUSH_ENDPOINT="${PUBSUB_PUSH_ENDPOINT:-}"
 
 echo "使用專案：${PROJECT_ID}"
+if [[ -n "${PUBSUB_ENV}" ]]; then
+  echo "環境：${PUBSUB_ENV}"
+fi
 echo "Post topic:     ${PUBSUB_TOPIC_POST} (sub: ${PUBSUB_SUB_POST})"
 echo "Comment topic:  ${PUBSUB_TOPIC_COMMENT} (sub: ${PUBSUB_SUB_COMMENT})"
 echo "Reaction topic: ${PUBSUB_TOPIC_REACTION} (sub: ${PUBSUB_SUB_REACTION})"
