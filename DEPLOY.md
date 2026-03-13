@@ -56,6 +56,7 @@ chmod +x scripts/setup_pubsub.sh
 
 - 檢查 `PROJECT_ID` 是否存在（從 `gcloud config get-value project` 取得）
 - 建立上述三個 topics（若已存在會略過）
+- 以及對應的三個 subscriptions（預設名稱為 `<topic>-sub`，可用環境變數 `PUBSUB_SUB_*` 覆寫）
 
 ---
 
@@ -118,9 +119,17 @@ gcloud pubsub subscriptions pull test-post-sub --auto-ack --limit 10
 
 Subscriber 也是用同一個 image，只是啟動指令不同（執行 `subscriber.main`）。
 
-### 6.1 新增 subscriptions
+### 6.1 準備 subscriptions
 
-如果你還沒有為三個 topic 建立 subscriptions，可以用下列指令：
+如果你有跑 `scripts/setup_pubsub.sh`，會自動為三個 topic 建好 subscriptions，預設名稱為：
+
+- `${PUBSUB_TOPIC_POST}-sub`
+- `${PUBSUB_TOPIC_COMMENT}-sub`
+- `${PUBSUB_TOPIC_REACTION}-sub`
+
+你也可以用 `PUBSUB_SUB_POST` / `PUBSUB_SUB_COMMENT` / `PUBSUB_SUB_REACTION` 三個環境變數自訂名稱，腳本會跟著用。
+
+不想用腳本的話，也可以手動建立：
 
 ```bash
 gcloud pubsub subscriptions create "${PUBSUB_TOPIC_POST}-sub" \
