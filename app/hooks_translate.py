@@ -71,7 +71,7 @@ def _translation_to_keystone_content_fields(translation: Dict[str, Any]) -> Dict
     return {k: v for k, v in out.items() if v is not None}
 
 
-def _build_update_data(gemini_result: Dict[str, Any]) -> Dict[str, Any]:
+def _build_update_data(gemini_result: Dict[str, Any], source_text: str) -> Dict[str, Any]:
     trans = gemini_result.get("translation")
     if not isinstance(trans, dict):
         raise ValueError("Gemini 回傳缺少 translation")
@@ -82,6 +82,19 @@ def _build_update_data(gemini_result: Dict[str, Any]) -> Dict[str, Any]:
     )
     if lang:
         data["language"] = lang
+
+        # 原語言欄位使用「原文」（source_text），不要用 Gemini 同語言翻譯結果覆蓋。
+        # 例：detect=en => contentEn 使用原文；其他 content_* 使用翻譯值。
+        detected_field_map = {
+            "zh": "contentZh",
+            "en": "contentEn",
+            "vi": "contentVi",
+            "th": "contentTh",
+            "id": "contentId",
+        }
+        detected_field = detected_field_map.get(lang)
+        if detected_field:
+            data[detected_field] = source_text
     return data
 
 
@@ -116,7 +129,7 @@ def sync_translations_from_hook(
         text = _fetch_source_content(article_type, item_id)
 
     gemini_result = translate_and_detect(text)
-    update_data = _build_update_data(gemini_result)
+    update_data = _build_update_data(gemini_result, text)
 
     if article_type == "post":
         execute_gql(MUTATION_UPDATE_POST, {"id": item_id, "data": update_data})
