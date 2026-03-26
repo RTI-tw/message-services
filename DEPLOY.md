@@ -28,6 +28,8 @@ export PUBSUB_ENV="dev"                 # 環境名稱（例：dev / stg / prod�
 export PUBSUB_PUSH_ENDPOINT=""   # 例如 https://message-services-dev-xxx.asia-east1.run.app/pubsub/push
 # 若要強制把已存在的 subscription 改成 Push，設為 1 後再執行 scripts/setup_pubsub.sh
 export FORCE_PUSH=0
+
+# Keystone hooks（POST /hooks/sync-translations）預設不需要 secret
 ```
 
 ---
@@ -94,7 +96,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --platform managed \
   --region "${REGION}" \
   --allow-unauthenticated \
-  --set-env-vars "GCP_PROJECT_ID=${PROJECT_ID},PUBSUB_TOPIC_POST=${PUBSUB_TOPIC_POST},PUBSUB_TOPIC_COMMENT=${PUBSUB_TOPIC_COMMENT},PUBSUB_TOPIC_REACTION=${PUBSUB_TOPIC_REACTION},KEYSTONE_GQL_ENDPOINT=${KEYSTONE_GQL_ENDPOINT},KEYSTONE_AUTH_TOKEN=${KEYSTONE_AUTH_TOKEN}"
+  --set-env-vars "GCP_PROJECT_ID=${PROJECT_ID},PUBSUB_TOPIC_POST=${PUBSUB_TOPIC_POST},PUBSUB_TOPIC_COMMENT=${PUBSUB_TOPIC_COMMENT},PUBSUB_TOPIC_REACTION=${PUBSUB_TOPIC_REACTION},KEYSTONE_GQL_ENDPOINT=${KEYSTONE_GQL_ENDPOINT},KEYSTONE_AUTH_TOKEN=${KEYSTONE_AUTH_TOKEN},GEMINI_API_KEY=${GEMINI_API_KEY},GEMINI_MODEL=${GEMINI_MODEL}"
 ```
 
 部署成功後，Cloud Run 會回傳一個 URL，例如：

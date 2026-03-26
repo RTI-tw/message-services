@@ -2,14 +2,27 @@ import asyncio
 import base64
 import json
 import logging
+import os
+from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
+from pydantic import ValidationError
 
 from . import schemas
+from .gemini_translate import translate_and_detect
+from .hooks_translate import sync_translations_from_hook
 from .pubsub_client import publisher
 
 logger = logging.getLogger(__name__)
 app = FastAPI(title="Forum Message Services", version="0.1.0")
+
+
+def verify_hook_secret(x_hook_secret: Annotated[str | None, Header()] = None) -> None:
+    expected = (os.getenv("KEYSTONE_HOOK_SECRET") or "").strip()
+    if not expected:
+        return
+    if not x_hook_secret or x_hook_secret != expected:
+        raise HTTPException(status_code=401, detail="Invalid or missing X-Hook-Secret")
 
 
 def build_envelope(entity: str, operation: schemas.Operation, payload) -> schemas.EventEnvelope:
@@ -122,4 +135,54 @@ async def health_check():
 @app.get("/healthz")
 async def healthz():
     return {"status": "ok"}
+
+
+@app.post("/hooks/sync-translations")
+async def keystone_hook_sync_translations(
+    body: schemas.KeystoneHookSyncTranslationRequest,
+    _auth: Annotated[None, Depends(verify_hook_secret)],
+):
+    """
+    供 Keystone hooks 呼叫：依 Post / Comment 的 `content`（原文）翻譯後，
+    以 GQL 更新 `language` 與各語系 `contentZh` / `contentEn` / `contentVi` / `contentTh` / `contentId`。
+    若環境變數 `KEYSTONE_HOOK_SECRET` 有設定，請帶 header `X-Hook-Secret`。
+    """
+    try:
+        return await asyncio.to_thread(
+            sync_translations_from_hook,
+            article_type=body.article_type,
+            item_id=body.id,
+            source_text=body.source_text,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    except Exception as e:  # noqa: BLE001
+        logger.exception("hooks/sync-translations failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@app.post("/translate")
+async def translate_article(body: schemas.TranslateRequest):
+    """
+    使用 Gemini 偵測語言並翻譯為 zh-tw / en / vi / th / id（JSON 結構與 prompt 約定一致）。
+    """
+    try:
+        raw = await asyncio.to_thread(translate_and_detect, body.text.strip())
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    except Exception as e:  # noqa: BLE001
+        logger.exception("Gemini translate failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+    try:
+        parsed = schemas.GeminiTranslateResponse.model_validate(raw)
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=502,
+            detail={"message": "Gemini 回傳格式不符合預期", "errors": e.errors(), "raw": raw},
+        ) from e
+
+    return parsed.model_dump(mode="json", by_alias=True)
 

@@ -1,8 +1,8 @@
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Operation(str, Enum):
@@ -69,4 +69,44 @@ class EventEnvelope(BaseModel):
     entity: str
     data: Dict[str, Any]
     occurred_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class TranslateRequest(BaseModel):
+    text: str = Field(min_length=1, description="要翻譯的原文")
+
+
+class TranslationFiveLang(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    zh_tw: str = Field(validation_alias="zh-tw", serialization_alias="zh-tw")
+    en: str
+    vi: str
+    th: str
+    id_lang: str = Field(validation_alias="id", serialization_alias="id")
+
+
+class GeminiTranslateResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    detect_lang: str = Field(
+        validation_alias="detect-lang",
+        serialization_alias="detect-lang",
+    )
+    translation: TranslationFiveLang
+
+
+class KeystoneHookSyncTranslationRequest(BaseModel):
+    """Keystone hooks 呼叫：JSON 使用欄位名 `type`（post | comment）。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    article_type: Literal["post", "comment"] = Field(
+        validation_alias="type",
+        serialization_alias="type",
+    )
+    id: str = Field(min_length=1, description="Post 或 Comment 的 Keystone id")
+    source_text: Optional[str] = Field(
+        default=None,
+        description="選填；若省略則由 GQL 讀取該筆的 content（原文內容）再翻譯",
+    )
 
