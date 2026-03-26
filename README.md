@@ -105,6 +105,8 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 選填 `source_text`：若提供則以此字串翻譯，否則會先 GQL 查詢該筆的 `content`。
 
+若回傳 **503**，回應 body 會含 `detail.code`（例如 `gemini_config` = 未設 `GEMINI_API_KEY`，`keystone_config` = 未設 `KEYSTONE_GQL_ENDPOINT`，`graphql_error` = Keystone GQL 錯誤）。請在 Cloud Run 環境變數確認上述變數與 GCP 已啟用 **Generative Language API**。
+
 #### 文章翻譯（Gemini）
 
 `POST /translate`（需設定 `GEMINI_API_KEY`）

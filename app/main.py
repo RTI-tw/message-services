@@ -17,6 +17,21 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Forum Message Services", version="0.1.0")
 
 
+def _runtime_error_http_detail(exc: RuntimeError) -> dict:
+    """讓 hook 呼叫端與 Cloud Logging 能快速分辨 503 原因。"""
+    msg = str(exc)
+    code = "runtime_error"
+    if "GEMINI_API_KEY" in msg:
+        code = "gemini_config"
+    elif "KEYSTONE_GQL_ENDPOINT" in msg:
+        code = "keystone_config"
+    elif "GraphQL error" in msg:
+        code = "graphql_error"
+    elif "Gemini" in msg:
+        code = "gemini_response"
+    return {"code": code, "message": msg}
+
+
 def verify_hook_secret(x_hook_secret: Annotated[str | None, Header()] = None) -> None:
     expected = (os.getenv("KEYSTONE_HOOK_SECRET") or "").strip()
     if not expected:
@@ -145,7 +160,7 @@ async def keystone_hook_sync_translations(
     """
     供 Keystone hooks 呼叫：依 Post / Comment 的 `content`（原文）翻譯後，
     以 GQL 更新 `language` 與各語系 `contentZh` / `contentEn` / `contentVi` / `contentTh` / `contentId`。
-    若環境變數 `KEYSTONE_HOOK_SECRET` 有設定，請帶 header `X-Hook-Secret`。
+    需要 Cloud Run 已設定 `GEMINI_API_KEY` 與 `KEYSTONE_GQL_ENDPOINT`。
     """
     try:
         return await asyncio.to_thread(
@@ -157,7 +172,8 @@ async def keystone_hook_sync_translations(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except RuntimeError as e:
-        raise HTTPException(status_code=503, detail=str(e)) from e
+        logger.warning("hooks/sync-translations RuntimeError: %s", e)
+        raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
     except Exception as e:  # noqa: BLE001
         logger.exception("hooks/sync-translations failed: %s", e)
         raise HTTPException(status_code=502, detail=str(e)) from e
@@ -171,7 +187,8 @@ async def translate_article(body: schemas.TranslateRequest):
     try:
         raw = await asyncio.to_thread(translate_and_detect, body.text.strip())
     except RuntimeError as e:
-        raise HTTPException(status_code=503, detail=str(e)) from e
+        logger.warning("translate RuntimeError: %s", e)
+        raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
     except Exception as e:  # noqa: BLE001
         logger.exception("Gemini translate failed: %s", e)
         raise HTTPException(status_code=502, detail=str(e)) from e
