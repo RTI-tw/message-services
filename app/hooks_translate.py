@@ -60,13 +60,14 @@ def gemini_detect_to_keystone_language(detect: Optional[str]) -> Optional[str]:
 
 
 def _translation_to_keystone_content_fields(translation: Dict[str, Any]) -> Dict[str, Any]:
-    """Gemini translation keys -> Keystone GraphQL camelCase（對應 Post.ts / comment.ts 的 content_*）。"""
+    """Gemini translation keys -> Keystone GraphQL input 欄位（snake_case）。"""
+    # Keystone GraphQL input 欄位通常維持跟 schema 相同的命名（本專案為 snake_case）。
     out: Dict[str, Any] = {
-        "contentZh": translation.get("zh-tw") if "zh-tw" in translation else translation.get("zh_tw"),
-        "contentEn": translation.get("en"),
-        "contentVi": translation.get("vi"),
-        "contentTh": translation.get("th"),
-        "contentId": translation.get("id"),
+        "content_zh": translation.get("zh-tw") if "zh-tw" in translation else translation.get("zh_tw"),
+        "content_en": translation.get("en"),
+        "content_vi": translation.get("vi"),
+        "content_th": translation.get("th"),
+        "content_id": translation.get("id"),
     }
     return {k: v for k, v in out.items() if v is not None}
 
@@ -86,11 +87,11 @@ def _build_update_data(gemini_result: Dict[str, Any], source_text: str) -> Dict[
         # 原語言欄位使用「原文」（source_text），不要用 Gemini 同語言翻譯結果覆蓋。
         # 例：detect=en => contentEn 使用原文；其他 content_* 使用翻譯值。
         detected_field_map = {
-            "zh": "contentZh",
-            "en": "contentEn",
-            "vi": "contentVi",
-            "th": "contentTh",
-            "id": "contentId",
+            "zh": "content_zh",
+            "en": "content_en",
+            "vi": "content_vi",
+            "th": "content_th",
+            "id": "content_id",
         }
         detected_field = detected_field_map.get(lang)
         if detected_field:
@@ -121,7 +122,7 @@ def sync_translations_from_hook(
     source_text: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    以 Gemini 翻譯後，透過 GQL updatePost / updateComment 寫入 language 與 contentZh/contentEn/...
+    以 Gemini 翻譯後，透過 GQL updatePost / updateComment 寫入 language 與 content_* 欄位（snake_case）。
     Hook 認證（選填）在 FastAPI route 依賴中處理。
     """
     text = (source_text or "").strip()
