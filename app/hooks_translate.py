@@ -81,6 +81,15 @@ def _build_update_data(gemini_result: Dict[str, Any], source_text: str) -> Dict[
     lang = gemini_detect_to_keystone_language(
         gemini_result.get("detect-lang") or gemini_result.get("detect_lang")
     )
+    spam_score = gemini_result.get("spamScore")
+    if spam_score is not None:
+        try:
+            v = float(spam_score)
+            # Keystone spamScore 驗證範圍 0~1；做保護避免尖峰值導致 update 失敗
+            v = max(0.0, min(1.0, v))
+            data["spamScore"] = v
+        except (TypeError, ValueError):
+            pass
     if lang:
         data["language"] = lang
 

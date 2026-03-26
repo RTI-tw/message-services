@@ -12,6 +12,9 @@ Your task is to analyze a given text snippet and perform the following actions:
 
 1. Detect the original language of the input text (limited to: zh-tw, en, vi, th, id).
 2. Translate the input text into ALL five target languages: 'zh-tw' (Traditional Chinese), 'en' (English), 'vi' (Vietnamese), 'th' (Thai), and 'id' (Indonesian).
+3. Estimate a SPAM likelihood score for the input text:
+   - spamScore must be a number in [0, 1]
+   - 0 means definitely not spam, 1 means definitely spam
 
 ### Strict Constraints:
 - RESPONSE FORMAT: Return ONLY a valid JSON object. No Markdown blocks (```json), no pre-ambles, and no post-explanations.
@@ -28,7 +31,8 @@ Your task is to analyze a given text snippet and perform the following actions:
     "vi": "string",
     "th": "string",
     "id": "string"
-  }
+  },
+  "spamScore": 0.0
 }
 """
 

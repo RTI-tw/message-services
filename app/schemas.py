@@ -93,6 +93,7 @@ class GeminiTranslateResponse(BaseModel):
         serialization_alias="detect-lang",
     )
     translation: TranslationFiveLang
+    spamScore: Optional[float] = None
 
 
 class KeystoneHookSyncTranslationRequest(BaseModel):

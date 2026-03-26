@@ -94,7 +94,9 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 `POST /hooks/sync-translations`（需 `GEMINI_API_KEY`、`KEYSTONE_GQL_ENDPOINT`）
 
-依 forum-cms `Post.ts` / `comment.ts` 的 `content`（原文）、`language`、各語系 `content_*` 欄位語意，呼叫 Gemini 後以 GraphQL `updatePost` / `updateComment` 更新 `language` 與 `contentZh`、`contentEn`、`contentVi`、`contentTh`、`contentId`（Keystone 6 GraphQL camelCase）。
+依 forum-cms `Post.ts` / `comment.ts` 的 `content`（原文）、`language`、各語系 `content_*` 欄位語意，呼叫 Gemini 後以 GraphQL `updatePost` / `updateComment` 更新 `language` 與 `content_zh`、`content_en`、`content_vi`、`content_th`、`content_id`（Keystone 6 GraphQL snake_case）。
+
+並會同時估算 `spamScore`（0–1）寫回 Keystone 的 `spamScore` 欄位。
 
 ```json
 {
