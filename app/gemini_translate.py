@@ -18,6 +18,7 @@ Your task is to analyze a given text snippet and perform the following actions:
 
 ### Strict Constraints:
 - RESPONSE FORMAT: Return ONLY a valid JSON object. No Markdown blocks (```json), no pre-ambles, and no post-explanations.
+- LINE BREAKS: You MUST preserve the original paragraph structure and line breaks from the input text. Within JSON strings, represent line breaks using the literal `\n` character (escaped newline), and do NOT remove or collapse newlines.
 - LANGUAGE CODES: Use exactly these keys: 'zh-tw', 'en', 'vi', 'th', 'id'.
 - PRESERVATION: Even if the source language matches a target, provide it in the corresponding field.
 - TONE: Natural, professional, and culturally appropriate.
