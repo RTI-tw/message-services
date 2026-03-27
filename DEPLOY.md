@@ -7,6 +7,7 @@
 - 已安裝並初始化 `gcloud` CLI
 - 擁有一個 GCP 專案，且有足夠權限建立 Pub/Sub / Cloud Build / Cloud Run
 - 已在本機或 CI 中登入：`gcloud auth login`、`gcloud config set project <PROJECT_ID>`
+- 若要使用 `POST /export/contents-to-gcs`，Cloud Run 執行身分需有目標 bucket 的寫入權限（例如 `roles/storage.objectAdmin`）
 
 建議先設定環境變數：
 

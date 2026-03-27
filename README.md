@@ -27,6 +27,7 @@ pip install -r requirements.txt
 - `KEYSTONE_AUTH_TOKEN`: 選填，呼叫 Keystone 時帶入
 - `GEMINI_API_KEY`: 選填；設定後可使用 `POST /translate`（Gemini 多語翻譯）
 - `GEMINI_MODEL`: 選填，預設 `gemini-1.5-flash`
+- Cloud Run 若要使用 `POST /export/contents-to-gcs`，執行身分需有目標 bucket 寫入權限（例如 `roles/storage.objectAdmin` 或最小必要權限）。
 
 ### 啟動服務
 
@@ -119,7 +120,36 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 }
 ```
 
-回傳範例（鍵名與 Gemini 約定一致：`detect-lang`、`translation` 內含 `zh-tw`、`en`、`vi`、`th`、`id`）：
+#### 匯出全部 contents 到 GCS
+
+`POST /export/contents-to-gcs`（需設定 `KEYSTONE_GQL_ENDPOINT`，且 Cloud Run 服務帳號可寫 GCS）
+
+```json
+{
+  "bucket_name": "your-export-bucket",
+  "prefix": "exports/contents/dev",
+  "page_size": 200,
+  "id": "clxxxxxxxxxxxxxxxxxxxx"
+}
+```
+
+- 有傳 `id`：只匯出該筆 content 成一個 JSON 檔
+- 沒傳 `id`：匯出全部 contents（分頁）
+
+回傳範例：
+
+```json
+{
+  "bucket": "your-export-bucket",
+  "prefix": "exports/contents/dev/20260326T041500Z",
+  "total_exported": 123,
+  "sample_paths": [
+    "exports/contents/dev/20260326T041500Z/homepage-banner-clx...json"
+  ]
+}
+```
+
+`POST /translate` 回傳範例（鍵名與 Gemini 約定一致：`detect-lang`、`translation` 內含 `zh-tw`、`en`、`vi`、`th`、`id`）：
 
 ```json
 {

@@ -118,3 +118,13 @@ class KeystoneHookSyncTranslationRequest(BaseModel):
         description="選填；若省略則由 GQL 讀取該筆原文欄位再翻譯",
     )
 
+
+class ExportContentsToGcsRequest(BaseModel):
+    bucket_name: str = Field(min_length=1, description="GCS bucket 名稱")
+    prefix: str = Field(default="exports/contents", description="GCS 物件路徑前綴")
+    page_size: int = Field(default=200, ge=1, le=1000, description="每次 GQL 擷取筆數")
+    id: Optional[str] = Field(
+        default=None,
+        description="選填；若提供則只匯出指定 content id，未提供則匯出全部",
+    )
+
