@@ -97,17 +97,24 @@ class GeminiTranslateResponse(BaseModel):
 
 
 class KeystoneHookSyncTranslationRequest(BaseModel):
-    """Keystone hooks 呼叫：JSON 使用欄位名 `type`（post | comment）。"""
+    """Keystone hooks 呼叫：JSON 使用欄位名 `type`。"""
 
     model_config = ConfigDict(populate_by_name=True)
 
-    article_type: Literal["post", "comment"] = Field(
+    article_type: Literal[
+        "post",
+        "comment",
+        "topic",
+        "poll",
+        "pollOption",
+        "content",
+    ] = Field(
         validation_alias="type",
         serialization_alias="type",
     )
-    id: str = Field(min_length=1, description="Post 或 Comment 的 Keystone id")
+    id: str = Field(min_length=1, description="Keystone 實體 id")
     source_text: Optional[str] = Field(
         default=None,
-        description="選填；若省略則由 GQL 讀取該筆的 content（原文內容）再翻譯",
+        description="選填；若省略則由 GQL 讀取該筆原文欄位再翻譯",
     )
 

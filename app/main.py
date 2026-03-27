@@ -158,9 +158,9 @@ async def keystone_hook_sync_translations(
     _auth: Annotated[None, Depends(verify_hook_secret)],
 ):
     """
-    供 Keystone hooks 呼叫：依 Post / Comment 的 `content`（原文）翻譯後，
-    以 GQL 更新 `language` 與各語系 `contentZh` / `contentEn` / `contentVi` / `contentTh` / `contentId`。
-    需要 Cloud Run 已設定 `GEMINI_API_KEY` 與 `KEYSTONE_GQL_ENDPOINT`。
+    供 Keystone hooks 呼叫：依 type（post / comment / topic / poll / pollOption / content）
+    讀取原文欄位、翻譯後以 GQL 寫回各語系與 language（若有）。
+    需要已設定 `GEMINI_API_KEY` 與 `KEYSTONE_GQL_ENDPOINT`。
     """
     try:
         return await asyncio.to_thread(

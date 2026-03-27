@@ -1,9 +1,16 @@
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, Literal, Optional, Tuple
 
 from .gemini_translate import translate_and_detect
 from .keystone_gql import execute_gql
 
-ArticleType = Literal["post", "comment"]
+ArticleType = Literal[
+    "post",
+    "comment",
+    "topic",
+    "poll",
+    "pollOption",
+    "content",
+]
 
 QUERY_POST = """
 query PostForTranslate($id: ID!) {
@@ -18,6 +25,44 @@ query PostForTranslate($id: ID!) {
 QUERY_COMMENT = """
 query CommentForTranslate($id: ID!) {
   comment(where: { id: $id }) {
+    id
+    content
+    language
+  }
+}
+"""
+
+QUERY_TOPIC = """
+query TopicForTranslate($id: ID!) {
+  topic(where: { id: $id }) {
+    id
+    name
+    language
+  }
+}
+"""
+
+QUERY_POLL = """
+query PollForTranslate($id: ID!) {
+  poll(where: { id: $id }) {
+    id
+    title
+  }
+}
+"""
+
+QUERY_POLL_OPTION = """
+query PollOptionForTranslate($id: ID!) {
+  pollOption(where: { id: $id }) {
+    id
+    text
+  }
+}
+"""
+
+QUERY_CONTENT = """
+query ContentForTranslate($id: ID!) {
+  content(where: { id: $id }) {
     id
     content
     language
@@ -41,6 +86,38 @@ mutation UpdateCommentTranslations($id: ID!, $data: CommentUpdateInput!) {
 }
 """
 
+MUTATION_UPDATE_TOPIC = """
+mutation UpdateTopicTranslations($id: ID!, $data: TopicUpdateInput!) {
+  updateTopic(where: { id: $id }, data: $data) {
+    id
+  }
+}
+"""
+
+MUTATION_UPDATE_POLL = """
+mutation UpdatePollTranslations($id: ID!, $data: PollUpdateInput!) {
+  updatePoll(where: { id: $id }, data: $data) {
+    id
+  }
+}
+"""
+
+MUTATION_UPDATE_POLL_OPTION = """
+mutation UpdatePollOptionTranslations($id: ID!, $data: PollOptionUpdateInput!) {
+  updatePollOption(where: { id: $id }, data: $data) {
+    id
+  }
+}
+"""
+
+MUTATION_UPDATE_CONTENT = """
+mutation UpdateContentTranslations($id: ID!, $data: ContentUpdateInput!) {
+  updateContent(where: { id: $id }, data: $data) {
+    id
+  }
+}
+"""
+
 
 def gemini_detect_to_keystone_language(detect: Optional[str]) -> Optional[str]:
     if not detect:
@@ -59,69 +136,104 @@ def gemini_detect_to_keystone_language(detect: Optional[str]) -> Optional[str]:
     return None
 
 
-def _translation_to_keystone_content_fields(translation: Dict[str, Any]) -> Dict[str, Any]:
-    """Gemini translation keys -> Keystone GraphQL input 欄位（snake_case）。"""
-    # Keystone GraphQL input 欄位通常維持跟 schema 相同的命名（本專案為 snake_case）。
+def _translation_to_prefixed_fields(
+    field_prefix: str, translation: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Gemini translation keys -> Keystone GraphQL snake_case（content_zh / name_zh / title_zh / text_zh）。"""
     out: Dict[str, Any] = {
-        "content_zh": translation.get("zh-tw") if "zh-tw" in translation else translation.get("zh_tw"),
-        "content_en": translation.get("en"),
-        "content_vi": translation.get("vi"),
-        "content_th": translation.get("th"),
-        "content_id": translation.get("id"),
+        f"{field_prefix}_zh": translation.get("zh-tw")
+        if "zh-tw" in translation
+        else translation.get("zh_tw"),
+        f"{field_prefix}_en": translation.get("en"),
+        f"{field_prefix}_vi": translation.get("vi"),
+        f"{field_prefix}_th": translation.get("th"),
+        f"{field_prefix}_id": translation.get("id"),
     }
     return {k: v for k, v in out.items() if v is not None}
 
 
-def _build_update_data(gemini_result: Dict[str, Any], source_text: str) -> Dict[str, Any]:
+def _field_prefix_for_entity(entity: ArticleType) -> str:
+    if entity in ("post", "comment", "content"):
+        return "content"
+    if entity == "topic":
+        return "name"
+    if entity == "poll":
+        return "title"
+    if entity == "pollOption":
+        return "text"
+    raise ValueError(f"unknown entity: {entity}")
+
+
+def _entity_supports_language_field(entity: ArticleType) -> bool:
+    return entity in ("post", "comment", "topic", "content")
+
+
+def _entity_supports_spam_score(entity: ArticleType) -> bool:
+    return entity in ("post", "comment")
+
+
+def _build_update_data(
+    entity: ArticleType, gemini_result: Dict[str, Any], source_text: str
+) -> Dict[str, Any]:
     trans = gemini_result.get("translation")
     if not isinstance(trans, dict):
         raise ValueError("Gemini 回傳缺少 translation")
 
-    data = _translation_to_keystone_content_fields(trans)
+    prefix = _field_prefix_for_entity(entity)
+    data = _translation_to_prefixed_fields(prefix, trans)
+
     lang = gemini_detect_to_keystone_language(
         gemini_result.get("detect-lang") or gemini_result.get("detect_lang")
     )
-    spam_score = gemini_result.get("spamScore")
-    if spam_score is not None:
-        try:
-            v = float(spam_score)
-            # Keystone spamScore 驗證範圍 0~1；做保護避免尖峰值導致 update 失敗
-            v = max(0.0, min(1.0, v))
-            data["spamScore"] = v
-        except (TypeError, ValueError):
-            pass
-    if lang:
-        data["language"] = lang
 
-        # 原語言欄位使用「原文」（source_text），不要用 Gemini 同語言翻譯結果覆蓋。
-        # 例：detect=en => contentEn 使用原文；其他 content_* 使用翻譯值。
+    if _entity_supports_spam_score(entity):
+        spam_score = gemini_result.get("spamScore")
+        if spam_score is not None:
+            try:
+                v = float(spam_score)
+                v = max(0.0, min(1.0, v))
+                data["spamScore"] = v
+            except (TypeError, ValueError):
+                pass
+
+    if lang and _entity_supports_language_field(entity):
+        data["language"] = lang
         detected_field_map = {
-            "zh": "content_zh",
-            "en": "content_en",
-            "vi": "content_vi",
-            "th": "content_th",
-            "id": "content_id",
+            "zh": f"{prefix}_zh",
+            "en": f"{prefix}_en",
+            "vi": f"{prefix}_vi",
+            "th": f"{prefix}_th",
+            "id": f"{prefix}_id",
         }
         detected_field = detected_field_map.get(lang)
         if detected_field:
             data[detected_field] = source_text
+
     return data
 
 
-def _fetch_source_content(article_type: ArticleType, item_id: str) -> str:
-    if article_type == "post":
-        data = execute_gql(QUERY_POST, {"id": item_id})
-        node = data.get("post")
-    else:
-        data = execute_gql(QUERY_COMMENT, {"id": item_id})
-        node = data.get("comment")
+_FETCH_CONFIG: Dict[ArticleType, Tuple[str, str, str]] = {
+    "post": (QUERY_POST, "post", "content"),
+    "comment": (QUERY_COMMENT, "comment", "content"),
+    "topic": (QUERY_TOPIC, "topic", "name"),
+    "poll": (QUERY_POLL, "poll", "title"),
+    "pollOption": (QUERY_POLL_OPTION, "pollOption", "text"),
+    "content": (QUERY_CONTENT, "content", "content"),
+}
 
+
+def _fetch_source_text(article_type: ArticleType, item_id: str) -> str:
+    query, node_key, field = _FETCH_CONFIG[article_type]
+    data = execute_gql(query, {"id": item_id})
+    node = data.get(node_key)
     if not node:
         raise ValueError(f"{article_type} id={item_id} 不存在")
-    content = (node.get("content") or "").strip()
-    if not content:
-        raise ValueError("content 為空，無法翻譯（請在 CMS 填寫「原文內容」或改傳 source_text）")
-    return content
+    text = (node.get(field) or "").strip()
+    if not text:
+        raise ValueError(
+            f"{field} 為空，無法翻譯（請在 CMS 填寫原文或改傳 source_text）"
+        )
+    return text
 
 
 def sync_translations_from_hook(
@@ -131,24 +243,34 @@ def sync_translations_from_hook(
     source_text: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    以 Gemini 翻譯後，透過 GQL updatePost / updateComment 寫入 language 與 content_* 欄位（snake_case）。
-    Hook 認證（選填）在 FastAPI route 依賴中處理。
+    以 Gemini 翻譯後，透過 GQL update* 寫入 language（若有）與各語系欄位。
     """
     text = (source_text or "").strip()
     if not text:
-        text = _fetch_source_content(article_type, item_id)
+        text = _fetch_source_text(article_type, item_id)
 
     gemini_result = translate_and_detect(text)
-    update_data = _build_update_data(gemini_result, text)
+    update_data = _build_update_data(article_type, gemini_result, text)
 
     if article_type == "post":
         execute_gql(MUTATION_UPDATE_POST, {"id": item_id, "data": update_data})
-    else:
+    elif article_type == "comment":
         execute_gql(MUTATION_UPDATE_COMMENT, {"id": item_id, "data": update_data})
+    elif article_type == "topic":
+        execute_gql(MUTATION_UPDATE_TOPIC, {"id": item_id, "data": update_data})
+    elif article_type == "poll":
+        execute_gql(MUTATION_UPDATE_POLL, {"id": item_id, "data": update_data})
+    elif article_type == "pollOption":
+        execute_gql(MUTATION_UPDATE_POLL_OPTION, {"id": item_id, "data": update_data})
+    elif article_type == "content":
+        execute_gql(MUTATION_UPDATE_CONTENT, {"id": item_id, "data": update_data})
+    else:
+        raise ValueError(f"unsupported article_type: {article_type}")
 
     return {
         "id": item_id,
         "type": article_type,
         "updated_fields": list(update_data.keys()),
-        "detect_lang": gemini_result.get("detect-lang") or gemini_result.get("detect_lang"),
+        "detect_lang": gemini_result.get("detect-lang")
+        or gemini_result.get("detect_lang"),
     }
