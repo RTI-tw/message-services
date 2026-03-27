@@ -96,7 +96,12 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 `POST /hooks/sync-translations`（需 `GEMINI_API_KEY`、`KEYSTONE_GQL_ENDPOINT`）
 
-依 forum-cms `Post.ts` / `comment.ts` 的 `content`（原文）、`language`、各語系 `content_*` 欄位語意，呼叫 Gemini 後以 GraphQL `updatePost` / `updateComment` 更新 `language` 與 `content_zh`、`content_en`、`content_vi`、`content_th`、`content_id`（Keystone 6 GraphQL snake_case）。
+依 forum-cms `Post.ts` / `comment.ts` 的原文欄位語意：
+
+- `post`：翻譯 `title` 與 `content`，更新 `title_*` 與 `content_*`
+- `comment`：翻譯 `content`，更新 `content_*`
+
+並以 GraphQL `updatePost` / `updateComment` 同步更新 `language` 與各語系欄位（Keystone 6 GraphQL snake_case）。
 
 並會同時估算 `spamScore`（0–1）寫回 Keystone 的 `spamScore` 欄位。
 
@@ -107,7 +112,8 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 }
 ```
 
-選填 `source_text`：若提供則以此字串翻譯，否則會先 GQL 查詢該筆的 `content`。
+選填 `source_text`：若提供則以此字串翻譯，否則會先 GQL 查詢該筆原文內容。
+`post` 可另外傳 `source_title`（若省略會改由 GQL 讀取 title）。
 
 若回傳 **503**，回應 body 會含 `detail.code`（例如 `gemini_config` = 未設 `GEMINI_API_KEY`，`keystone_config` = 未設 `KEYSTONE_GQL_ENDPOINT`，`graphql_error` = Keystone GQL 錯誤）。請在 Cloud Run 環境變數確認上述變數與 GCP 已啟用 **Generative Language API**。
 

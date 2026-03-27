@@ -16,6 +16,7 @@ QUERY_POST = """
 query PostForTranslate($id: ID!) {
   post(where: { id: $id }) {
     id
+    title
     content
     language
   }
@@ -212,6 +213,32 @@ def _build_update_data(
     return data
 
 
+def _build_title_update_data_for_post(
+    gemini_result: Dict[str, Any],
+    source_title: str,
+) -> Dict[str, Any]:
+    trans = gemini_result.get("translation")
+    if not isinstance(trans, dict):
+        raise ValueError("Gemini 回傳缺少 translation（title）")
+
+    data = _translation_to_prefixed_fields("title", trans)
+    lang = gemini_detect_to_keystone_language(
+        gemini_result.get("detect-lang") or gemini_result.get("detect_lang")
+    )
+    if lang:
+        detected_field_map = {
+            "zh": "title_zh",
+            "en": "title_en",
+            "vi": "title_vi",
+            "th": "title_th",
+            "id": "title_id",
+        }
+        detected_field = detected_field_map.get(lang)
+        if detected_field:
+            data[detected_field] = source_title
+    return data
+
+
 _FETCH_CONFIG: Dict[ArticleType, Tuple[str, str, str]] = {
     "post": (QUERY_POST, "post", "content"),
     "comment": (QUERY_COMMENT, "comment", "content"),
@@ -236,21 +263,56 @@ def _fetch_source_text(article_type: ArticleType, item_id: str) -> str:
     return text
 
 
+def _fetch_post_source_texts(item_id: str) -> Tuple[str, str]:
+    data = execute_gql(QUERY_POST, {"id": item_id})
+    node = data.get("post")
+    if not node:
+        raise ValueError(f"post id={item_id} 不存在")
+
+    title = (node.get("title") or "").strip()
+    content = (node.get("content") or "").strip()
+    if not title and not content:
+        raise ValueError("title 與 content 皆為空，無法翻譯")
+    return title, content
+
+
 def sync_translations_from_hook(
     *,
     article_type: ArticleType,
     item_id: str,
     source_text: Optional[str] = None,
+    source_title: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     以 Gemini 翻譯後，透過 GQL update* 寫入 language（若有）與各語系欄位。
     """
-    text = (source_text or "").strip()
-    if not text:
-        text = _fetch_source_text(article_type, item_id)
+    update_data: Dict[str, Any] = {}
 
-    gemini_result = translate_and_detect(text)
-    update_data = _build_update_data(article_type, gemini_result, text)
+    if article_type == "post":
+        title = (source_title or "").strip()
+        content = (source_text or "").strip()
+        if not title and not content:
+            title, content = _fetch_post_source_texts(item_id)
+        elif not title or not content:
+            # 若只有其中一個有傳，補查 DB 拿完整原文
+            fetched_title, fetched_content = _fetch_post_source_texts(item_id)
+            if not title:
+                title = fetched_title
+            if not content:
+                content = fetched_content
+
+        if content:
+            content_result = translate_and_detect(content)
+            update_data.update(_build_update_data(article_type, content_result, content))
+        if title:
+            title_result = translate_and_detect(title)
+            update_data.update(_build_title_update_data_for_post(title_result, title))
+    else:
+        text = (source_text or "").strip()
+        if not text:
+            text = _fetch_source_text(article_type, item_id)
+        gemini_result = translate_and_detect(text)
+        update_data = _build_update_data(article_type, gemini_result, text)
 
     if article_type == "post":
         execute_gql(MUTATION_UPDATE_POST, {"id": item_id, "data": update_data})
@@ -271,6 +333,5 @@ def sync_translations_from_hook(
         "id": item_id,
         "type": article_type,
         "updated_fields": list(update_data.keys()),
-        "detect_lang": gemini_result.get("detect-lang")
-        or gemini_result.get("detect_lang"),
+        "detect_lang": update_data.get("language"),
     }

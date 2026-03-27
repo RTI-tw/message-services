@@ -215,6 +215,7 @@ async def keystone_hook_sync_translations(
             article_type=body.article_type,
             item_id=body.id,
             source_text=body.source_text,
+            source_title=body.source_title,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
