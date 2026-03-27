@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from . import schemas
 from .export_contents import export_all_contents_to_gcs
+from .export_topic_posts import export_topic_posts_to_gcs
 from .gemini_translate import translate_and_detect
 from .hooks_translate import sync_translations_from_hook
 from .pubsub_client import publisher
@@ -151,7 +152,6 @@ async def export_contents_to_gcs(body: schemas.ExportContentsToGcsRequest):
     try:
         return await asyncio.to_thread(
             export_all_contents_to_gcs,
-            bucket_name=body.bucket_name,
             prefix=body.prefix,
             page_size=body.page_size,
             content_id=body.id,
@@ -163,6 +163,29 @@ async def export_contents_to_gcs(body: schemas.ExportContentsToGcsRequest):
         raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
     except Exception as e:  # noqa: BLE001
         logger.exception("export/contents-to-gcs failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@app.post("/export/topic-posts-to-gcs")
+async def export_topic_posts(body: schemas.ExportTopicPostsToGcsRequest):
+    """
+    產出每個 topic 的最新/熱門/含投票貼文三份 JSON，並上傳到 GCS。
+    """
+    try:
+        return await asyncio.to_thread(
+            export_topic_posts_to_gcs,
+            prefix=body.prefix,
+            per_topic_limit=body.per_topic_limit,
+            post_state=body.post_state,
+            scan_multiplier=body.scan_multiplier,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        logger.warning("export/topic-posts-to-gcs RuntimeError: %s", e)
+        raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
+    except Exception as e:  # noqa: BLE001
+        logger.exception("export/topic-posts-to-gcs failed: %s", e)
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 

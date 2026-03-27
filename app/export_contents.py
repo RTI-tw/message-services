@@ -4,6 +4,7 @@ from typing import Any, Dict, List
 
 from google.cloud import storage
 
+from .config import get_settings
 from .keystone_gql import execute_gql
 
 QUERY_CONTENTS = """
@@ -50,7 +51,6 @@ def _normalize_prefix(prefix: str) -> str:
 
 def export_all_contents_to_gcs(
     *,
-    bucket_name: str,
     prefix: str = "exports/contents",
     page_size: int = 200,
     content_id: str | None = None,
@@ -58,8 +58,10 @@ def export_all_contents_to_gcs(
     """
     透過 Keystone GraphQL 取得全部 contents，逐筆上傳為獨立 JSON 檔案到 GCS。
     """
-    if not bucket_name.strip():
-        raise ValueError("bucket_name 不可為空")
+    settings = get_settings()
+    bucket_name = settings.gcs_bucket
+    if not bucket_name:
+        raise RuntimeError("GCS_BUCKET 環境變數未設定")
     if page_size <= 0:
         raise ValueError("page_size 必須大於 0")
 

@@ -27,6 +27,7 @@ pip install -r requirements.txt
 - `KEYSTONE_AUTH_TOKEN`: 選填，呼叫 Keystone 時帶入
 - `GEMINI_API_KEY`: 選填；設定後可使用 `POST /translate`（Gemini 多語翻譯）
 - `GEMINI_MODEL`: 選填，預設 `gemini-1.5-flash`
+- `GCS_BUCKET`: 匯出 JSON 到 GCS 的預設 bucket（`/export/contents-to-gcs`、`/export/topic-posts-to-gcs` 共用）
 - Cloud Run 若要使用 `POST /export/contents-to-gcs`，執行身分需有目標 bucket 寫入權限（例如 `roles/storage.objectAdmin` 或最小必要權限）。
 
 ### 啟動服務
@@ -126,7 +127,6 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ```json
 {
-  "bucket_name": "your-export-bucket",
   "prefix": "exports/contents/dev",
   "page_size": 200,
   "id": "clxxxxxxxxxxxxxxxxxxxx"
@@ -146,6 +146,47 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
   "sample_paths": [
     "exports/contents/dev/20260326T041500Z/homepage-banner-clx...json"
   ]
+}
+```
+
+#### 匯出每個 Topic 的最新/熱門/含投票貼文到 GCS（3 份 JSON）
+
+`POST /export/topic-posts-to-gcs`
+
+用途：給 scheduler 定時呼叫，預先產出頁面需要資料。會上傳三個檔案：
+
+- `latest.json`：每個 topic 的最新 post（依建立時間降冪）
+- `hot.json`：每個 topic 的熱門 post（留言數最多）
+- `with-poll.json`：每個 topic 中有投票內容的 post（依建立時間降冪）
+
+```json
+{
+  "prefix": "exports/topic-posts/dev",
+  "per_topic_limit": 10,
+  "post_state": "active",
+  "scan_multiplier": 10
+}
+```
+
+說明：
+
+- `post_state=active` 會映射到 Keystone `Post.status=published`
+- 每個 topic 會先抓 `per_topic_limit * scan_multiplier` 筆，再計算熱門與含投票
+
+回傳範例：
+
+```json
+{
+  "bucket": "your-export-bucket",
+  "prefix": "exports/topic-posts/dev/20260326T052000Z",
+  "files": [
+    "exports/topic-posts/dev/20260326T052000Z/latest.json",
+    "exports/topic-posts/dev/20260326T052000Z/hot.json",
+    "exports/topic-posts/dev/20260326T052000Z/with-poll.json"
+  ],
+  "topics_count": 8,
+  "per_topic_limit": 10,
+  "post_state": "published"
 }
 ```
 
