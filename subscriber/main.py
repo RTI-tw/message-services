@@ -1,7 +1,7 @@
 import json
 import logging
 from concurrent.futures import TimeoutError
-from typing import Callable
+from typing import Callable, cast
 
 from google.cloud import pubsub_v1
 
@@ -29,6 +29,7 @@ def main() -> None:
         "post": settings.sub_post,
         "comment": settings.sub_comment,
         "reaction": settings.sub_reaction,
+        "bookmark": settings.sub_bookmark,
     }
 
     streaming_futures = []
@@ -65,7 +66,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    from typing import cast
-
     main()
 

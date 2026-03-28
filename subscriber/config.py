@@ -12,6 +12,7 @@ class SubscriberSettings:
         self.sub_post: str = os.getenv("PUBSUB_SUB_POST", "forum-post-events-sub")
         self.sub_comment: str = os.getenv("PUBSUB_SUB_COMMENT", "forum-comment-events-sub")
         self.sub_reaction: str = os.getenv("PUBSUB_SUB_REACTION", "forum-reaction-events-sub")
+        self.sub_bookmark: str = os.getenv("PUBSUB_SUB_BOOKMARK", "forum-bookmark-events-sub")
 
         # Keystone GraphQL
         # 例如：https://forum-cms.example.com/api/graphql

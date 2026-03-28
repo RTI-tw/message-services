@@ -12,6 +12,7 @@ def publisher_mock(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     mock.publish_post_event.return_value = "pubsub-msg-post"
     mock.publish_comment_event.return_value = "pubsub-msg-comment"
     mock.publish_reaction_event.return_value = "pubsub-msg-reaction"
+    mock.publish_bookmark_event.return_value = "pubsub-msg-bookmark"
     monkeypatch.setattr("app.main.publisher", mock)
     return mock
 
@@ -108,3 +109,34 @@ def test_reaction_create_202(client: TestClient, publisher_mock: MagicMock) -> N
     env = publisher_mock.publish_reaction_event.call_args[0][0]
     assert env["entity"] == "reaction"
     assert env["data"]["emotion"] == "happy"
+
+
+def test_bookmark_create_202(client: TestClient, publisher_mock: MagicMock) -> None:
+    res = client.post(
+        "/bookmark/create",
+        json={"member_id": "m1", "post_id": "p1"},
+    )
+    assert res.status_code == 202
+    assert res.json() == {"message_id": "pubsub-msg-bookmark"}
+    env = publisher_mock.publish_bookmark_event.call_args[0][0]
+    assert env["entity"] == "bookmark"
+    assert env["operation"] == "create"
+    assert env["data"]["post_id"] == "p1"
+    assert env["data"]["member_id"] == "m1"
+
+
+def test_bookmark_update_202(client: TestClient, publisher_mock: MagicMock) -> None:
+    res = client.post(
+        "/bookmark/update",
+        json={"id": "b1", "member_id": "m1", "post_id": "p2"},
+    )
+    assert res.status_code == 202
+    env = publisher_mock.publish_bookmark_event.call_args[0][0]
+    assert env["operation"] == "update"
+    assert env["data"]["id"] == "b1"
+
+
+def test_bookmark_missing_post_id_422(client: TestClient, publisher_mock: MagicMock) -> None:
+    res = client.post("/bookmark/create", json={"member_id": "m1"})
+    assert res.status_code == 422
+    publisher_mock.publish_bookmark_event.assert_not_called()

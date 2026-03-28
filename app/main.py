@@ -108,6 +108,26 @@ async def update_reaction(reaction: schemas.Reaction):
     return {"message_id": message_id}
 
 
+@app.post("/bookmark/create", status_code=status.HTTP_202_ACCEPTED)
+async def create_bookmark(bookmark: schemas.Bookmark):
+    envelope = build_envelope("bookmark", schemas.Operation.create, bookmark)
+    try:
+        message_id = publisher.publish_bookmark_event(envelope.model_dump(mode="json"))
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {"message_id": message_id}
+
+
+@app.post("/bookmark/update", status_code=status.HTTP_202_ACCEPTED)
+async def update_bookmark(bookmark: schemas.Bookmark):
+    envelope = build_envelope("bookmark", schemas.Operation.update, bookmark)
+    try:
+        message_id = publisher.publish_bookmark_event(envelope.model_dump(mode="json"))
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {"message_id": message_id}
+
+
 @app.post("/pubsub/push")
 async def pubsub_push(request: Request):
     """

@@ -4,7 +4,7 @@ The services for the message queue for the forum data
 
 ## FastAPI + GCP Pub/Sub API
 
-這個專案提供一個使用 FastAPI 撰寫的 HTTP API，負責將論壇的 `post`、`comment`、`reaction` 的建立與更新事件，送到 GCP Pub/Sub 對應的 topic；同時提供 `POST /pubsub/push` 接收 Pub/Sub Push 訊息，並依事件內容呼叫 Keystone GraphQL 寫入資料。
+這個專案提供一個使用 FastAPI 撰寫的 HTTP API，負責將論壇的 `post`、`comment`、`reaction`、`bookmark` 的建立與更新事件，送到 GCP Pub/Sub 對應的 topic；同時提供 `POST /pubsub/push` 接收 Pub/Sub Push 訊息，並依事件內容呼叫 Keystone GraphQL 寫入資料。
 
 ### 安裝依賴
 
@@ -22,7 +22,7 @@ pip install -r requirements.txt
 再設定以下環境變數：
 
 - `GCP_PROJECT_ID`: GCP 專案 ID（必填）
-- `PUBSUB_TOPIC_POST` / `PUBSUB_TOPIC_COMMENT` / `PUBSUB_TOPIC_REACTION`: 各事件 topic 名稱
+- `PUBSUB_TOPIC_POST` / `PUBSUB_TOPIC_COMMENT` / `PUBSUB_TOPIC_REACTION` / `PUBSUB_TOPIC_BOOKMARK`: 各事件 topic 名稱（bookmark 預設 `forum-bookmark-events`）
 - `KEYSTONE_GQL_ENDPOINT`: Keystone GraphQL URL（Push 收到訊息時寫入用）
 - `KEYSTONE_AUTH_TOKEN`: 選填，呼叫 Keystone 時帶入
 - `GEMINI_API_KEY`: 選填；設定後可使用 `POST /translate`（Gemini 多語翻譯）
@@ -60,6 +60,8 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 | 更新留言 | `POST /comment/update` |
 | 建立反應 | `POST /reaction/create` |
 | 更新反應 | `POST /reaction/update` |
+| 建立書籤 | `POST /bookmark/create` |
+| 更新書籤 | `POST /bookmark/update` |
 
 #### `fetch` 範例（建立貼文，含投票內嵌）
 
@@ -137,6 +139,15 @@ await fetch(`${BASE}/reaction/create`, {
     member_id: 'member-id',
     post_id: 'post-id',
     emotion: 'happy', // happy | angry | surprise | sad
+  }),
+});
+
+await fetch(`${BASE}/bookmark/create`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    member_id: 'member-id',
+    post_id: 'post-id',
   }),
 });
 ```

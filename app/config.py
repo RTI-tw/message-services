@@ -9,6 +9,7 @@ class Settings:
         self.post_topic: str = os.getenv("PUBSUB_TOPIC_POST", "forum-post-events")
         self.comment_topic: str = os.getenv("PUBSUB_TOPIC_COMMENT", "forum-comment-events")
         self.reaction_topic: str = os.getenv("PUBSUB_TOPIC_REACTION", "forum-reaction-events")
+        self.bookmark_topic: str = os.getenv("PUBSUB_TOPIC_BOOKMARK", "forum-bookmark-events")
         # Gemini（文章翻譯）
         self.gemini_api_key: str = (os.getenv("GEMINI_API_KEY") or "").strip()
         _gemini_model = (os.getenv("GEMINI_MODEL") or "").strip()

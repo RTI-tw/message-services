@@ -126,6 +126,14 @@ class Reaction(BaseModel):
     created_at: Optional[datetime] = None
 
 
+class Bookmark(BaseModel):
+    """對應 forum-cms Bookmark：會員對文章的書籤。"""
+
+    id: Optional[str] = Field(default=None, description="CMS 書籤 id；update 必填")
+    post_id: str = Field(min_length=1, description="Post ID")
+    member_id: str = Field(min_length=1, description="Member ID")
+
+
 class EventEnvelope(BaseModel):
     operation: Operation
     entity: str

@@ -33,6 +33,9 @@ class PubSubPublisher:
     def publish_reaction_event(self, payload: Dict[str, Any]) -> str:
         return self.publish(self._settings.reaction_topic, payload)
 
+    def publish_bookmark_event(self, payload: Dict[str, Any]) -> str:
+        return self.publish(self._settings.bookmark_topic, payload)
+
 
 publisher = PubSubPublisher()
 

@@ -212,6 +212,17 @@ def _reaction_input_from_event(data: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
+def _bookmark_input_from_event(data: Dict[str, Any]) -> Dict[str, Any]:
+    result: Dict[str, Any] = {}
+    post_id = data.get("post_id")
+    if post_id:
+        result["post"] = {"connect": {"id": post_id}}
+    member_id = data.get("member_id")
+    if member_id:
+        result["member"] = {"connect": {"id": member_id}}
+    return result
+
+
 def handle_event(payload: Dict[str, Any]) -> None:
     """
     根據 entity/operation 轉成對 Keystone 的 GQL mutation。
@@ -225,6 +236,8 @@ def handle_event(payload: Dict[str, Any]) -> None:
         _handle_comment(operation, data)
     elif entity == "reaction":
         _handle_reaction(operation, data)
+    elif entity == "bookmark":
+        _handle_bookmark(operation, data)
     else:
         raise ValueError(f"unsupported entity: {entity}")
 
@@ -297,3 +310,26 @@ def _handle_reaction(operation: str, data: Dict[str, Any]) -> None:
         gql_client.execute(mutation, {"id": reaction_id, "data": gql_data})
     else:
         raise ValueError(f"unsupported operation for reaction: {operation}")
+
+
+def _handle_bookmark(operation: str, data: Dict[str, Any]) -> None:
+    gql_data = _bookmark_input_from_event(data)
+    if operation == "create":
+        mutation = """
+          mutation CreateBookmark($data: BookmarkCreateInput!) {
+            createBookmark(data: $data) { id }
+          }
+        """
+        gql_client.execute(mutation, {"data": gql_data})
+    elif operation == "update":
+        bookmark_id = data.get("id")
+        if not bookmark_id:
+            raise ValueError("update bookmark event requires 'id'")
+        mutation = """
+          mutation UpdateBookmark($id: ID!, $data: BookmarkUpdateInput!) {
+            updateBookmark(where: { id: $id }, data: $data) { id }
+          }
+        """
+        gql_client.execute(mutation, {"id": bookmark_id, "data": gql_data})
+    else:
+        raise ValueError(f"unsupported operation for bookmark: {operation}")
