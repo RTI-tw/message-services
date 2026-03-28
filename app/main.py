@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from . import schemas
 from .export_contents import export_all_contents_to_gcs
 from .export_topic_posts import export_topic_posts_to_gcs
+from .export_topics_daily_stats import export_topics_daily_stats_to_gcs
 from .gemini_translate import translate_and_detect
 from .hooks_translate import sync_translations_from_hook
 from .pubsub_client import publisher
@@ -186,6 +187,30 @@ async def export_topic_posts(body: schemas.ExportTopicPostsToGcsRequest):
         raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
     except Exception as e:  # noqa: BLE001
         logger.exception("export/topic-posts-to-gcs failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@app.post("/export/topics-daily-stats-to-gcs")
+async def export_topics_daily_stats(body: schemas.ExportTopicsDailyStatsToGcsRequest):
+    """
+    列出目前所有 topic（Keystone 尚無 Topic.isActive，等同全部 topic），
+    並附每個 topic 在指定時區「當日」已發佈新文章數，合併為單一 JSON 上傳 GCS。
+    """
+    try:
+        return await asyncio.to_thread(
+            export_topics_daily_stats_to_gcs,
+            prefix=body.prefix,
+            timezone_name=body.timezone,
+            local_date_str=body.local_date,
+            post_state=body.post_state,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        logger.warning("export/topics-daily-stats-to-gcs RuntimeError: %s", e)
+        raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
+    except Exception as e:  # noqa: BLE001
+        logger.exception("export/topics-daily-stats-to-gcs failed: %s", e)
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 

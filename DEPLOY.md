@@ -32,7 +32,7 @@ export FORCE_PUSH=0
 
 # Keystone hooks（POST /hooks/sync-translations）預設不需要 secret
 
-# 匯出 JSON 到 GCS（/export/contents-to-gcs、/export/topic-posts-to-gcs 共用）
+# 匯出 JSON 到 GCS（/export/contents-to-gcs、/export/topic-posts-to-gcs、/export/topics-daily-stats-to-gcs 共用）
 export GCS_BUCKET="your-export-bucket"
 ```
 
