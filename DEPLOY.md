@@ -7,7 +7,6 @@
 - 已安裝並初始化 `gcloud` CLI
 - 擁有一個 GCP 專案，且有足夠權限建立 Pub/Sub / Cloud Build / Cloud Run
 - 已在本機或 CI 中登入：`gcloud auth login`、`gcloud config set project <PROJECT_ID>`
-- 若要使用 `POST /export/contents-to-gcs`，Cloud Run 執行身分需有目標 bucket 的寫入權限（例如 `roles/storage.objectAdmin`）
 
 建議先設定環境變數：
 
@@ -31,10 +30,9 @@ export PUBSUB_PUSH_ENDPOINT=""   # 例如 https://message-services-dev-xxx.asia-
 export FORCE_PUSH=0
 
 # Keystone hooks（POST /hooks/sync-translations）預設不需要 secret
-
-# 匯出 JSON 到 GCS（/export/contents-to-gcs、/export/topic-posts-to-gcs、/export/topics-daily-stats-to-gcs 共用）
-export GCS_BUCKET="your-export-bucket"
 ```
+
+（定時匯出 JSON 到 GCS 請另部署 **`cron-services`** repo，並於該服務設定 `GCS_BUCKET` 與 Keystone／GCS 權限。）
 
 ---
 
@@ -100,7 +98,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --platform managed \
   --region "${REGION}" \
   --allow-unauthenticated \
-  --set-env-vars "GCP_PROJECT_ID=${PROJECT_ID},PUBSUB_TOPIC_POST=${PUBSUB_TOPIC_POST},PUBSUB_TOPIC_COMMENT=${PUBSUB_TOPIC_COMMENT},PUBSUB_TOPIC_REACTION=${PUBSUB_TOPIC_REACTION},KEYSTONE_GQL_ENDPOINT=${KEYSTONE_GQL_ENDPOINT},KEYSTONE_AUTH_TOKEN=${KEYSTONE_AUTH_TOKEN},GEMINI_API_KEY=${GEMINI_API_KEY},GEMINI_MODEL=${GEMINI_MODEL},GCS_BUCKET=${GCS_BUCKET}"
+  --set-env-vars "GCP_PROJECT_ID=${PROJECT_ID},PUBSUB_TOPIC_POST=${PUBSUB_TOPIC_POST},PUBSUB_TOPIC_COMMENT=${PUBSUB_TOPIC_COMMENT},PUBSUB_TOPIC_REACTION=${PUBSUB_TOPIC_REACTION},KEYSTONE_GQL_ENDPOINT=${KEYSTONE_GQL_ENDPOINT},KEYSTONE_AUTH_TOKEN=${KEYSTONE_AUTH_TOKEN},GEMINI_API_KEY=${GEMINI_API_KEY},GEMINI_MODEL=${GEMINI_MODEL}"
 ```
 
 部署成功後，Cloud Run 會回傳一個 URL，例如：

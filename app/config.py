@@ -5,7 +5,6 @@ from functools import lru_cache
 class Settings:
     def __init__(self) -> None:
         self.gcp_project_id: str = os.getenv("GCP_PROJECT_ID", "")
-        self.gcs_bucket: str = (os.getenv("GCS_BUCKET") or "").strip()
         # 個別 topic，讓下游可以分流處理
         self.post_topic: str = os.getenv("PUBSUB_TOPIC_POST", "forum-post-events")
         self.comment_topic: str = os.getenv("PUBSUB_TOPIC_COMMENT", "forum-comment-events")
