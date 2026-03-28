@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Tuple
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
 
 from .gql_client import gql_client
 
@@ -14,25 +15,140 @@ def _split_envelope(payload: Dict[str, Any]) -> Tuple[str, str, Dict[str, Any]]:
     return str(entity), str(operation), data
 
 
-def _post_input_from_event(data: Dict[str, Any]) -> Dict[str, Any]:
+def _coerce_post_status_for_create(data: Dict[str, Any]) -> str:
+    """建立 Post 時的 status；未傳時預設 published；相容 is_active。"""
+    s = data.get("status")
+    if s is not None and str(s).strip():
+        return str(s).strip()
+    ia = data.get("is_active")
+    if ia is False:
+        return "draft"
+    if ia is True:
+        return "published"
+    return "published"
+
+
+def _optional_post_status_for_update(data: Dict[str, Any]) -> Optional[str]:
+    """僅在 payload 明確帶 status / is_active 時才更新，避免部分更新誤改狀態。"""
+    if "status" in data and data["status"] is not None and str(data["status"]).strip():
+        return str(data["status"]).strip()
+    if "is_active" in data:
+        if data["is_active"] is False:
+            return "draft"
+        if data["is_active"] is True:
+            return "published"
+    return None
+
+
+def _scalar_datetime(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    s = str(value).strip()
+    return s or None
+
+
+def _poll_create_payload(poll: Dict[str, Any]) -> Dict[str, Any]:
+    """PollCreateInput：title、選填 expiresAt、選項 options.create。"""
+    title = (poll.get("title") or "").strip()
+    if not title:
+        raise ValueError("poll.title 為必填")
+    out: Dict[str, Any] = {"title": title}
+    exp = poll.get("expires_at")
+    if exp is None:
+        exp = poll.get("expiresAt")
+    exp_iso = _scalar_datetime(exp)
+    if exp_iso:
+        out["expiresAt"] = exp_iso
+    opts = poll.get("options") or []
+    creates: List[Dict[str, str]] = []
+    for o in opts:
+        if not isinstance(o, dict):
+            continue
+        t = (o.get("text") or "").strip()
+        if t:
+            creates.append({"text": t})
+    if creates:
+        out["options"] = {"create": creates}
+    return out
+
+
+def _append_nested_poll(
+    result: Dict[str, Any],
+    poll: Optional[Dict[str, Any]],
+    *,
+    is_update: bool,
+) -> None:
+    if not poll or not isinstance(poll, dict):
+        return
+    pid = (poll.get("id") or "").strip()
+    if is_update and pid:
+        inner: Dict[str, Any] = {}
+        if poll.get("title") is not None:
+            inner["title"] = str(poll["title"]).strip()
+        exp = poll.get("expires_at")
+        if exp is None:
+            exp = poll.get("expiresAt")
+        exp_iso = _scalar_datetime(exp)
+        if exp_iso is not None:
+            inner["expiresAt"] = exp_iso
+        if inner:
+            result["poll"] = {"update": {"where": {"id": pid}, "data": inner}}
+        return
+    if not is_update:
+        result["poll"] = {"create": _poll_create_payload(poll)}
+        return
+    # update 但未帶 poll id：無法安全巢狀 create（可能已有一對一 poll），略過
+    return
+
+
+def _post_input_from_event(data: Dict[str, Any], *, is_update: bool) -> Dict[str, Any]:
     result: Dict[str, Any] = {}
-    # 直接對應到 Post list 的欄位
     for key in [
         "title",
+        "content",
+        "language",
+        "title_zh",
+        "title_en",
+        "title_vi",
+        "title_id",
+        "title_th",
         "content_zh",
         "content_en",
         "content_vi",
         "content_id",
         "content_th",
-        "is_active",
+        "ip",
     ]:
         if key in data and data[key] is not None:
             result[key] = data[key]
 
-    # author: relationship -> connect by id
+    if "spamScore" in data and data["spamScore"] is not None:
+        result["spamScore"] = data["spamScore"]
+    elif "spam_score" in data and data["spam_score"] is not None:
+        result["spamScore"] = data["spam_score"]
+
+    if is_update:
+        st = _optional_post_status_for_update(data)
+        if st is not None:
+            result["status"] = st
+    else:
+        result["status"] = _coerce_post_status_for_create(data)
+
     author_id = data.get("author_id")
     if author_id:
         result["author"] = {"connect": {"id": author_id}}
+
+    topic_id = data.get("topic_id")
+    if topic_id:
+        result["topic"] = {"connect": {"id": topic_id}}
+
+    hero_id = data.get("hero_image_id") or data.get("heroImageId")
+    if hero_id:
+        result["heroImage"] = {"connect": {"id": hero_id}}
+
+    _append_nested_poll(result, data.get("poll"), is_update=is_update)
 
     return result
 
@@ -114,7 +230,8 @@ def handle_event(payload: Dict[str, Any]) -> None:
 
 
 def _handle_post(operation: str, data: Dict[str, Any]) -> None:
-    gql_data = _post_input_from_event(data)
+    is_update = operation == "update"
+    gql_data = _post_input_from_event(data, is_update=is_update)
     if operation == "create":
         mutation = """
           mutation CreatePost($data: PostCreateInput!) {
@@ -180,4 +297,3 @@ def _handle_reaction(operation: str, data: Dict[str, Any]) -> None:
         gql_client.execute(mutation, {"id": reaction_id, "data": gql_data})
     else:
         raise ValueError(f"unsupported operation for reaction: {operation}")
-

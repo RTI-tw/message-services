@@ -1,4 +1,14 @@
 steps:
+  # 單元測試（失敗則後續步驟不執行）
+  - name: python:3.12-slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        pip install --no-cache-dir -r requirements-dev.txt
+        pytest -q
+
   # 建置 Docker image
   - name: "gcr.io/cloud-builders/docker"
     args:

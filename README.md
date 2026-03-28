@@ -41,7 +41,122 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - OpenAPI 文件：`http://localhost:8000/docs`
 - 健康檢查：`http://localhost:8000/health`
 
-### API 範例
+### 前端如何送 request 到 Publisher（寫入 Pub/Sub）
+
+論壇前端或 BFF **不要**直接呼叫 GCP Pub/Sub API，而是對本服務的 HTTP API 送 **JSON body**。服務會驗證欄位、組成事件信封（`entity`、`operation`、`data`、`occurred_at`），再發佈到對應的 Pub/Sub topic。
+
+- **URL**：部署後的 message-services 根網址（例如 `https://message-services-xxx.run.app`），**不要**結尾斜線。
+- **標頭**：`Content-Type: application/json`
+- **方法**：各資源皆為 `POST`，路徑見下表。
+- **成功**：HTTP **202**，body 為 `{"message_id": "<Pub/Sub 訊息 id>"}`。
+- **錯誤**：4xx（驗證失敗）、5xx（發佈失敗等）。
+- **CORS**：本專案預設未啟用跨來源；若瀏覽器直連需自行加 CORS 或改由**同源 BFF**轉發。
+
+| 意圖 | 路徑 |
+|------|------|
+| 建立貼文 | `POST /post/create` |
+| 更新貼文 | `POST /post/update` |
+| 建立留言 | `POST /comment/create` |
+| 更新留言 | `POST /comment/update` |
+| 建立反應 | `POST /reaction/create` |
+| 更新反應 | `POST /reaction/update` |
+
+#### `fetch` 範例（建立貼文，含投票內嵌）
+
+```javascript
+const BASE = 'https://your-message-services.example.com'; // 或本機 http://localhost:8000
+
+async function publishPostCreate(payload) {
+  const res = await fetch(`${BASE}/post/create`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`HTTP ${res.status}: ${text}`);
+  }
+  return res.json(); // { message_id: "..." }
+}
+
+// 最小必填：title。其餘欄位見 OpenAPI / app/schemas.py Post
+await publishPostCreate({
+  title: '標題',
+  content: '原文內文',
+  language: 'zh',
+  author_id: 'member-keystone-id',
+  topic_id: 'topic-keystone-id',
+  ip: '203.0.113.10',
+  status: 'published',
+  poll: {
+    title: '你喜歡哪個？',
+    expires_at: '2026-12-31T15:00:00.000Z',
+    options: [{ text: '選項甲' }, { text: '選項乙' }],
+  },
+});
+```
+
+#### `fetch` 範例（更新貼文）
+
+更新時請帶 CMS 既有貼文 `id`；僅想改狀態時可只送 `id` + `title`（title 仍為 schema 必填）+ `status`（或舊版 `is_active`）。
+
+```javascript
+await fetch(`${BASE}/post/update`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    id: 'clxxxxxxxxxxxxxxxxxxxx',
+    title: '標題',
+    status: 'published',
+    poll: {
+      id: 'poll-keystone-id',
+      title: '新投票標題',
+      expires_at: '2027-01-01T00:00:00.000Z',
+    },
+  }),
+});
+```
+
+#### `fetch` 範例（留言／反應）
+
+```javascript
+await fetch(`${BASE}/comment/create`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    member_id: 'member-id',
+    post_id: 'post-id',
+    content: '留言內容',
+  }),
+});
+
+await fetch(`${BASE}/reaction/create`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    member_id: 'member-id',
+    post_id: 'post-id',
+    emotion: 'happy', // happy | angry | surprise | sad
+  }),
+});
+```
+
+#### 服務端實際發佈到 Pub/Sub 的 JSON 形狀（除錯用）
+
+前端送出的物件會進入信封的 `data`；完整訊息大致為：
+
+```json
+{
+  "entity": "post",
+  "operation": "create",
+  "data": { "title": "…", "content": "…", "poll": { "title": "…", "options": […] } },
+  "occurred_at": "2026-03-28T12:00:00.000000"
+}
+```
+
+欄位名以 **snake_case** 為主（如 `author_id`、`topic_id`、`spam_score`）；少數別名亦支援（例如 `spamScore`、`expiresAt`、`heroImageId`），與 Pydantic 模型一致。
+
+### API 範例（精簡）
 
 #### 建立 Post 事件
 
@@ -49,11 +164,17 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ```json
 {
-  "id": "post-id-123",
   "title": "標題",
-  "content_zh": "內文",
+  "content": "原文",
+  "language": "zh",
   "author_id": "member-id-1",
-  "is_active": true
+  "topic_id": "topic-id-1",
+  "ip": "203.0.113.1",
+  "status": "published",
+  "poll": {
+    "title": "票選標題",
+    "options": [{ "text": "A" }, { "text": "B" }]
+  }
 }
 ```
 
@@ -77,7 +198,6 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ```json
 {
-  "id": "reaction-id-1",
   "member_id": "member-id-1",
   "post_id": "post-id-123",
   "emotion": "happy"
@@ -90,6 +210,13 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 {
   "message_id": "1234567890"
 }
+```
+
+### 執行測試
+
+```bash
+pip install -r requirements-dev.txt
+pytest
 ```
 
 #### Keystone hooks：翻譯後寫回 CMS

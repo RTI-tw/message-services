@@ -1,8 +1,8 @@
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 class Operation(str, Enum):
@@ -10,16 +10,78 @@ class Operation(str, Enum):
     update = "update"
 
 
+class PollOptionEmbedded(BaseModel):
+    """Pub/Sub 內嵌於 post 的投票選項（對應 PollOption.text）。"""
+
+    text: str = Field(min_length=1)
+
+
+class PollEmbedded(BaseModel):
+    """Pub/Sub 內嵌於 post 的投票；建立 Post 時一併巢狀建立 Poll / PollOption。"""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: Optional[str] = Field(
+        default=None,
+        description="選填；update 時若帶 CMS 的 poll id 可只更新該投票標題／截止時間",
+    )
+    title: str = Field(min_length=1, description="投票標題（原文）")
+    expires_at: Optional[datetime] = Field(
+        default=None,
+        validation_alias=AliasChoices("expires_at", "expiresAt"),
+        description="選填；對應 Poll.expiresAt",
+    )
+    options: List[PollOptionEmbedded] = Field(
+        default_factory=list,
+        description="選項列表；建立時寫入 PollOption",
+    )
+
+
 class Post(BaseModel):
     id: Optional[str] = Field(default=None, description="CMS 端的 Post ID")
     title: str
+    content: Optional[str] = Field(default=None, description="原文內容，對應 Post.content")
+    language: Optional[str] = Field(
+        default=None,
+        description="原始語言 zh/en/vi/id/th，對應 Post.language",
+    )
+    title_zh: Optional[str] = None
+    title_en: Optional[str] = None
+    title_vi: Optional[str] = None
+    title_id: Optional[str] = None
+    title_th: Optional[str] = None
     content_zh: Optional[str] = None
     content_en: Optional[str] = None
     content_vi: Optional[str] = None
     content_id: Optional[str] = None
     content_th: Optional[str] = None
     author_id: Optional[str] = Field(default=None, description="Member ID")
-    is_active: Optional[bool] = True
+    topic_id: Optional[str] = Field(default=None, description="Topic ID，GraphQL topic connect")
+    hero_image_id: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("hero_image_id", "heroImageId"),
+        description="Photo ID，GraphQL heroImage connect",
+    )
+    ip: Optional[str] = Field(default=None, description="發文 IP")
+    spam_score: Optional[float] = Field(
+        default=None,
+        validation_alias=AliasChoices("spam_score", "spamScore"),
+        ge=0.0,
+        le=1.0,
+        description="SPAM 分數 0–1，對應 Post.spamScore",
+    )
+    status: Optional[str] = Field(
+        default=None,
+        description="draft | published | archived | hidden；預設 published",
+    )
+    is_active: Optional[bool] = Field(
+        default=None,
+        description="相容舊欄位：若未傳 status，True→published、False→draft",
+    )
+    poll: Optional[PollEmbedded] = Field(
+        default=None,
+        description="選填；建立 Post 時巢狀建立 Poll 與選項",
+    )
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
