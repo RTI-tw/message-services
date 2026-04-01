@@ -178,7 +178,7 @@ async def keystone_hook_sync_translations(
     _auth: Annotated[None, Depends(verify_hook_secret)],
 ):
     """
-    供 Keystone hooks 呼叫：依 type（post / comment / topic / poll / pollOption / content）
+    供 Keystone hooks 呼叫：依 type（post / comment / topic / poll / pollOption / content / forbiddenKeyword）
     讀取原文欄位、翻譯後以 GQL 寫回各語系與 language（若有）。
     需要已設定 `GEMINI_API_KEY` 與 `KEYSTONE_GQL_ENDPOINT`。
     """

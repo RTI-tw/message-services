@@ -10,6 +10,7 @@ ArticleType = Literal[
     "poll",
     "pollOption",
     "content",
+    "forbiddenKeyword",
 ]
 
 QUERY_POST = """
@@ -71,6 +72,16 @@ query ContentForTranslate($id: ID!) {
 }
 """
 
+QUERY_FORBIDDEN_KEYWORD = """
+query ForbiddenKeywordForTranslate($id: ID!) {
+  forbiddenKeyword(where: { id: $id }) {
+    id
+    word
+    language
+  }
+}
+"""
+
 MUTATION_UPDATE_POST = """
 mutation UpdatePostTranslations($id: ID!, $data: PostUpdateInput!) {
   updatePost(where: { id: $id }, data: $data) {
@@ -119,6 +130,14 @@ mutation UpdateContentTranslations($id: ID!, $data: ContentUpdateInput!) {
 }
 """
 
+MUTATION_UPDATE_FORBIDDEN_KEYWORD = """
+mutation UpdateForbiddenKeywordTranslations($id: ID!, $data: ForbiddenKeywordUpdateInput!) {
+  updateForbiddenKeyword(where: { id: $id }, data: $data) {
+    id
+  }
+}
+"""
+
 
 def gemini_detect_to_keystone_language(detect: Optional[str]) -> Optional[str]:
     if not detect:
@@ -140,7 +159,7 @@ def gemini_detect_to_keystone_language(detect: Optional[str]) -> Optional[str]:
 def _translation_to_prefixed_fields(
     field_prefix: str, translation: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """Gemini translation keys -> Keystone GraphQL snake_case（content_zh / name_zh / title_zh / text_zh）。"""
+    """Gemini translation keys -> Keystone GraphQL snake_case（content_zh / name_zh / title_zh / text_zh / word_zh）。"""
     out: Dict[str, Any] = {
         f"{field_prefix}_zh": translation.get("zh-tw")
         if "zh-tw" in translation
@@ -162,11 +181,13 @@ def _field_prefix_for_entity(entity: ArticleType) -> str:
         return "title"
     if entity == "pollOption":
         return "text"
+    if entity == "forbiddenKeyword":
+        return "word"
     raise ValueError(f"unknown entity: {entity}")
 
 
 def _entity_supports_language_field(entity: ArticleType) -> bool:
-    return entity in ("post", "comment", "topic", "content")
+    return entity in ("post", "comment", "topic", "content", "forbiddenKeyword")
 
 
 def _entity_supports_spam_score(entity: ArticleType) -> bool:
@@ -246,6 +267,7 @@ _FETCH_CONFIG: Dict[ArticleType, Tuple[str, str, str]] = {
     "poll": (QUERY_POLL, "poll", "title"),
     "pollOption": (QUERY_POLL_OPTION, "pollOption", "text"),
     "content": (QUERY_CONTENT, "content", "content"),
+    "forbiddenKeyword": (QUERY_FORBIDDEN_KEYWORD, "forbiddenKeyword", "word"),
 }
 
 
@@ -326,6 +348,11 @@ def sync_translations_from_hook(
         execute_gql(MUTATION_UPDATE_POLL_OPTION, {"id": item_id, "data": update_data})
     elif article_type == "content":
         execute_gql(MUTATION_UPDATE_CONTENT, {"id": item_id, "data": update_data})
+    elif article_type == "forbiddenKeyword":
+        execute_gql(
+            MUTATION_UPDATE_FORBIDDEN_KEYWORD,
+            {"id": item_id, "data": update_data},
+        )
     else:
         raise ValueError(f"unsupported article_type: {article_type}")
 
