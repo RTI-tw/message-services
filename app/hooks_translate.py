@@ -66,6 +66,7 @@ QUERY_CONTENT = """
 query ContentForTranslate($id: ID!) {
   content(where: { id: $id }) {
     id
+    title
     content
     language
   }
@@ -234,7 +235,7 @@ def _build_update_data(
     return data
 
 
-def _build_title_update_data_for_post(
+def _build_title_update_data(
     gemini_result: Dict[str, Any],
     source_title: str,
 ) -> Dict[str, Any]:
@@ -258,6 +259,53 @@ def _build_title_update_data_for_post(
         if detected_field:
             data[detected_field] = source_title
     return data
+
+
+def _fetch_content_source_texts(item_id: str) -> Tuple[str, str]:
+    """與 _fetch_post_source_texts 相同語意：讀取靜態頁 title／content 原文。"""
+    data = execute_gql(QUERY_CONTENT, {"id": item_id})
+    node = data.get("content")
+    if not node:
+        raise ValueError(f"content id={item_id} 不存在")
+
+    title = (node.get("title") or "").strip()
+    content = (node.get("content") or "").strip()
+    if not title and not content:
+        raise ValueError("title 與 content 皆為空，無法翻譯")
+    return title, content
+
+
+def _sync_post_or_content_translations(
+    article_type: Literal["post", "content"],
+    item_id: str,
+    source_text: Optional[str],
+    source_title: Optional[str],
+) -> Dict[str, Any]:
+    """Post／Content：分別翻譯正文（content_*）與標題（title_*），邏輯與 CMS hook 送 source_text／source_title 一致。"""
+    update_data: Dict[str, Any] = {}
+    title = (source_title or "").strip()
+    content = (source_text or "").strip()
+    fetch_pair = (
+        _fetch_post_source_texts
+        if article_type == "post"
+        else _fetch_content_source_texts
+    )
+    if not title and not content:
+        title, content = fetch_pair(item_id)
+    elif not title or not content:
+        fetched_title, fetched_content = fetch_pair(item_id)
+        if not title:
+            title = fetched_title
+        if not content:
+            content = fetched_content
+
+    if content:
+        content_result = translate_and_detect(content)
+        update_data.update(_build_update_data(article_type, content_result, content))
+    if title:
+        title_result = translate_and_detect(title)
+        update_data.update(_build_title_update_data(title_result, title))
+    return update_data
 
 
 _FETCH_CONFIG: Dict[ArticleType, Tuple[str, str, str]] = {
@@ -310,25 +358,10 @@ def sync_translations_from_hook(
     """
     update_data: Dict[str, Any] = {}
 
-    if article_type == "post":
-        title = (source_title or "").strip()
-        content = (source_text or "").strip()
-        if not title and not content:
-            title, content = _fetch_post_source_texts(item_id)
-        elif not title or not content:
-            # 若只有其中一個有傳，補查 DB 拿完整原文
-            fetched_title, fetched_content = _fetch_post_source_texts(item_id)
-            if not title:
-                title = fetched_title
-            if not content:
-                content = fetched_content
-
-        if content:
-            content_result = translate_and_detect(content)
-            update_data.update(_build_update_data(article_type, content_result, content))
-        if title:
-            title_result = translate_and_detect(title)
-            update_data.update(_build_title_update_data_for_post(title_result, title))
+    if article_type in ("post", "content"):
+        update_data = _sync_post_or_content_translations(
+            article_type, item_id, source_text, source_title
+        )
     else:
         text = (source_text or "").strip()
         if not text:

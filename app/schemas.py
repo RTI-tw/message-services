@@ -190,6 +190,6 @@ class KeystoneHookSyncTranslationRequest(BaseModel):
     )
     source_title: Optional[str] = Field(
         default=None,
-        description="Post 專用選填；若省略則由 GQL 讀取該筆 title 再翻譯",
+        description="Post／Content 選填；若省略則由 GQL 讀取該筆 title 再翻譯為 title_zh～title_th",
     )
 
