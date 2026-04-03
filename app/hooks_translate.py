@@ -1,6 +1,6 @@
 from typing import Any, Dict, Literal, Optional, Tuple
 
-from .gemini_translate import translate_and_detect
+from .gemini_translate import translate_and_detect, translate_title_and_content_merged
 from .keystone_gql import execute_gql
 
 ArticleType = Literal[
@@ -281,7 +281,7 @@ def _sync_post_or_content_translations(
     source_text: Optional[str],
     source_title: Optional[str],
 ) -> Dict[str, Any]:
-    """Post／Content：分別翻譯正文（content_*）與標題（title_*），邏輯與 CMS hook 送 source_text／source_title 一致。"""
+    """Post／Content：翻譯正文（content_*）與標題（title_*）。title 與 content 皆有時改為單次 Gemini 合併請求。"""
     update_data: Dict[str, Any] = {}
     title = (source_title or "").strip()
     content = (source_text or "").strip()
@@ -299,10 +299,20 @@ def _sync_post_or_content_translations(
         if not content:
             content = fetched_content
 
-    if content:
+    if content and title:
+        merged = translate_title_and_content_merged(
+            title,
+            content,
+            include_spam_for_body=(article_type == "post"),
+        )
+        update_data.update(
+            _build_update_data(article_type, merged["content"], content)
+        )
+        update_data.update(_build_title_update_data(merged["title"], title))
+    elif content:
         content_result = translate_and_detect(content)
         update_data.update(_build_update_data(article_type, content_result, content))
-    if title:
+    elif title:
         title_result = translate_and_detect(title)
         update_data.update(_build_title_update_data(title_result, title))
     return update_data

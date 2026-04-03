@@ -6,6 +6,9 @@ import httpx
 
 _client: Optional[httpx.Client] = None
 
+# 明確保留 keep-alive 連線，與 httpx 預設行為一致但上限可調
+_DEFAULT_LIMITS = httpx.Limits(max_keepalive_connections=20, max_connections=100)
+
 
 def _get_client() -> httpx.Client:
     global _client
@@ -18,7 +21,12 @@ def _get_client() -> httpx.Client:
         token = (os.getenv("KEYSTONE_AUTH_TOKEN") or "").strip()
         if token:
             headers["Authorization"] = f"Bearer {token}"
-        _client = httpx.Client(base_url=endpoint, headers=headers, timeout=60.0)
+        _client = httpx.Client(
+            base_url=endpoint,
+            headers=headers,
+            timeout=60.0,
+            limits=_DEFAULT_LIMITS,
+        )
     return _client
 
 
