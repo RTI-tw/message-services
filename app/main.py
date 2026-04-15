@@ -162,6 +162,52 @@ async def pubsub_push(request: Request):
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+@app.post("/pubsub/push/translation")
+async def pubsub_push_translation(request: Request):
+    """
+    Pub/Sub **Push** 專用：訊息 body 與標準 push 相同（message.data base64），
+    內層 JSON 為翻譯 job：`type`/`id`/`source_text`/`source_title`（與 `/hooks/sync-translations` 相同）。
+
+    與 `POST /pubsub/push`（forum 事件）分開，請勿混用。
+    回傳 **2xx** 表示 ack；不可恢復的 payload 仍回 **200** 以免 Pub/Sub 無限重試。
+    """
+    try:
+        body = await request.json()
+    except Exception as e:
+        logger.warning("Invalid push body: %s", e)
+        raise HTTPException(status_code=400, detail="Invalid JSON") from e
+
+    message = body.get("message") if isinstance(body, dict) else None
+    if not message or "data" not in message:
+        logger.warning("Missing message.data in translation push body")
+        raise HTTPException(status_code=400, detail="Missing message.data")
+
+    try:
+        raw = base64.b64decode(message["data"])
+        payload = json.loads(raw.decode("utf-8"))
+    except (ValueError, KeyError, json.JSONDecodeError) as e:
+        logger.warning("Failed to decode translation push data: %s", e)
+        raise HTTPException(status_code=400, detail="Invalid message.data") from e
+
+    from subscriber.translation_handler import handle_translation_pubsub_payload
+
+    try:
+        result = await asyncio.to_thread(handle_translation_pubsub_payload, payload)
+        logger.info("pubsub push translation done: %s", result)
+        return {}
+    except ValueError as e:
+        logger.warning("translation push skipped (ack): %s", e)
+        return {}
+    except RuntimeError as e:
+        logger.warning("translation push transient failure: %s", e)
+        raise HTTPException(
+            status_code=503, detail=_runtime_error_http_detail(e)
+        ) from e
+    except Exception as e:  # noqa: BLE001
+        logger.exception("translation push failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
