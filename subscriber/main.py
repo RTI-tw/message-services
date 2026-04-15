@@ -7,6 +7,7 @@ from google.cloud import pubsub_v1
 
 from .config import get_settings
 from .handlers import handle_event
+from .translation_handler import handle_translation_pubsub_payload
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("subscriber")
@@ -51,6 +52,33 @@ def main() -> None:
 
         future = subscriber.subscribe(subscription_path, callback=cast(Callable, callback))
         streaming_futures.append(future)
+
+    if settings.sub_translation_sync:
+
+        def translation_callback(message) -> None:
+            try:
+                payload = json.loads(message.data.decode("utf-8"))
+                logger.info("Received translation_sync message: %s", payload)
+                result = handle_translation_pubsub_payload(payload)
+                logger.info("translation_sync done: %s", result)
+                message.ack()
+            except (json.JSONDecodeError, ValueError) as exc:
+                logger.warning(
+                    "translation_sync skipped (ack, no retry): %s", exc
+                )
+                message.ack()
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("translation_sync failed (nack for retry): %s", exc)
+                message.nack()
+
+        sub_path = _build_subscription_path(
+            subscriber, settings.sub_translation_sync, settings.gcp_project_id
+        )
+        logger.info(
+            "Starting subscriber for translation_sync on %s", sub_path
+        )
+        tf = subscriber.subscribe(sub_path, callback=cast(Callable, translation_callback))
+        streaming_futures.append(tf)
 
     logger.info("Listening for messages on all subscriptions... Press Ctrl+C to exit.")
 

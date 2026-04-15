@@ -19,11 +19,14 @@ if [[ -n "${PUBSUB_ENV}" ]]; then
   PUBSUB_TOPIC_COMMENT="${PUBSUB_TOPIC_COMMENT:-${PUBSUB_ENV}-forum-comment-events}"
   PUBSUB_TOPIC_REACTION="${PUBSUB_TOPIC_REACTION:-${PUBSUB_ENV}-forum-reaction-events}"
   PUBSUB_TOPIC_BOOKMARK="${PUBSUB_TOPIC_BOOKMARK:-${PUBSUB_ENV}-forum-bookmark-events}"
+  # CMS MESSAGE_SERVICES_TRANSLATION_PUBSUB_TOPIC 應與此 topic 名稱一致
+  PUBSUB_TOPIC_TRANSLATION_SYNC="${PUBSUB_TOPIC_TRANSLATION_SYNC:-${PUBSUB_ENV}-forum-translation-sync-events}"
 else
   PUBSUB_TOPIC_POST="${PUBSUB_TOPIC_POST:-forum-post-events}"
   PUBSUB_TOPIC_COMMENT="${PUBSUB_TOPIC_COMMENT:-forum-comment-events}"
   PUBSUB_TOPIC_REACTION="${PUBSUB_TOPIC_REACTION:-forum-reaction-events}"
   PUBSUB_TOPIC_BOOKMARK="${PUBSUB_TOPIC_BOOKMARK:-forum-bookmark-events}"
+  PUBSUB_TOPIC_TRANSLATION_SYNC="${PUBSUB_TOPIC_TRANSLATION_SYNC:-forum-translation-sync-events}"
 fi
 
 # 預設 subscription 名稱：<topic>-sub
@@ -31,6 +34,7 @@ PUBSUB_SUB_POST="${PUBSUB_SUB_POST:-${PUBSUB_TOPIC_POST}-sub}"
 PUBSUB_SUB_COMMENT="${PUBSUB_SUB_COMMENT:-${PUBSUB_TOPIC_COMMENT}-sub}"
 PUBSUB_SUB_REACTION="${PUBSUB_SUB_REACTION:-${PUBSUB_TOPIC_REACTION}-sub}"
 PUBSUB_SUB_BOOKMARK="${PUBSUB_SUB_BOOKMARK:-${PUBSUB_TOPIC_BOOKMARK}-sub}"
+PUBSUB_SUB_TRANSLATION_SYNC="${PUBSUB_SUB_TRANSLATION_SYNC:-${PUBSUB_TOPIC_TRANSLATION_SYNC}-sub}"
 
 # 若設定 PUBSUB_PUSH_ENDPOINT（例如 https://xxx.run.app/pubsub/push），則建立/更新為 Push subscription
 PUBSUB_PUSH_ENDPOINT="${PUBSUB_PUSH_ENDPOINT:-}"
@@ -41,10 +45,11 @@ echo "使用專案：${PROJECT_ID}"
 if [[ -n "${PUBSUB_ENV}" ]]; then
   echo "環境：${PUBSUB_ENV}"
 fi
-echo "Post topic:     ${PUBSUB_TOPIC_POST} (sub: ${PUBSUB_SUB_POST})"
-echo "Comment topic:  ${PUBSUB_TOPIC_COMMENT} (sub: ${PUBSUB_SUB_COMMENT})"
-echo "Reaction topic: ${PUBSUB_TOPIC_REACTION} (sub: ${PUBSUB_SUB_REACTION})"
-echo "Bookmark topic: ${PUBSUB_TOPIC_BOOKMARK} (sub: ${PUBSUB_SUB_BOOKMARK})"
+echo "Post topic:        ${PUBSUB_TOPIC_POST} (sub: ${PUBSUB_SUB_POST})"
+echo "Comment topic:     ${PUBSUB_TOPIC_COMMENT} (sub: ${PUBSUB_SUB_COMMENT})"
+echo "Reaction topic:    ${PUBSUB_TOPIC_REACTION} (sub: ${PUBSUB_SUB_REACTION})"
+echo "Bookmark topic:    ${PUBSUB_TOPIC_BOOKMARK} (sub: ${PUBSUB_SUB_BOOKMARK})"
+echo "Translation topic: ${PUBSUB_TOPIC_TRANSLATION_SYNC} (sub: ${PUBSUB_SUB_TRANSLATION_SYNC})"
 if [[ -n "${PUBSUB_PUSH_ENDPOINT}" ]]; then
   echo "Push endpoint:  ${PUBSUB_PUSH_ENDPOINT}"
 fi
@@ -64,6 +69,7 @@ create_topic_if_not_exists "${PUBSUB_TOPIC_POST}"
 create_topic_if_not_exists "${PUBSUB_TOPIC_COMMENT}"
 create_topic_if_not_exists "${PUBSUB_TOPIC_REACTION}"
 create_topic_if_not_exists "${PUBSUB_TOPIC_BOOKMARK}"
+create_topic_if_not_exists "${PUBSUB_TOPIC_TRANSLATION_SYNC}"
 
 echo
 
@@ -98,6 +104,7 @@ create_sub_if_not_exists "${PUBSUB_SUB_POST}" "${PUBSUB_TOPIC_POST}"
 create_sub_if_not_exists "${PUBSUB_SUB_COMMENT}" "${PUBSUB_TOPIC_COMMENT}"
 create_sub_if_not_exists "${PUBSUB_SUB_REACTION}" "${PUBSUB_TOPIC_REACTION}"
 create_sub_if_not_exists "${PUBSUB_SUB_BOOKMARK}" "${PUBSUB_TOPIC_BOOKMARK}"
+create_sub_if_not_exists "${PUBSUB_SUB_TRANSLATION_SYNC}" "${PUBSUB_TOPIC_TRANSLATION_SYNC}"
 
 echo
 echo "所有 Pub/Sub topics 與 subscriptions 準備完成。"

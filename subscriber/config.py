@@ -13,6 +13,9 @@ class SubscriberSettings:
         self.sub_comment: str = os.getenv("PUBSUB_SUB_COMMENT", "forum-comment-events-sub")
         self.sub_reaction: str = os.getenv("PUBSUB_SUB_REACTION", "forum-reaction-events-sub")
         self.sub_bookmark: str = os.getenv("PUBSUB_SUB_BOOKMARK", "forum-bookmark-events-sub")
+        # 翻譯 job（與 CMS MESSAGE_SERVICES_TRANSLATION_PUBSUB_TOPIC 對應之 subscription）
+        # 未設定時 subscriber 不訂閱此路徑
+        self.sub_translation_sync: str = os.getenv("PUBSUB_SUB_TRANSLATION_SYNC", "").strip()
 
         # Keystone GraphQL
         # 例如：https://forum-cms.example.com/api/graphql
