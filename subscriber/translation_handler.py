@@ -1,39 +1,8 @@
 """
-處理 CMS 發佈之翻譯 job（Pub/Sub payload 與 HTTP /hooks/sync-translations 相同）。
-僅接受 type 為 post / comment，其餘型別拒絕。
+翻譯 job 處理邏輯已移至 `app.translation_job`（API 映像僅含 app/）。
+此模組保留 re-export，供舊程式與測試以 `subscriber.translation_handler` 匯入。
 """
 
-from __future__ import annotations
+from app.translation_job import handle_translation_pubsub_payload
 
-import logging
-from typing import Any, Dict
-
-from pydantic import ValidationError
-
-from app.hooks_translate import sync_translations_from_hook
-from app.schemas import KeystoneHookSyncTranslationRequest
-
-logger = logging.getLogger(__name__)
-
-
-def handle_translation_pubsub_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    驗證 payload 並執行 sync_translations_from_hook。
-    成功時回傳與 HTTP hook 類似的結果 dict（供 log）。
-    """
-    try:
-        body = KeystoneHookSyncTranslationRequest.model_validate(payload)
-    except ValidationError as e:
-        raise ValueError(f"invalid translation payload: {e}") from e
-
-    if body.article_type not in ("post", "comment"):
-        raise ValueError(
-            f"Pub/Sub translation job only supports post|comment, got: {body.article_type!r}"
-        )
-
-    return sync_translations_from_hook(
-        article_type=body.article_type,
-        item_id=body.id,
-        source_text=body.source_text,
-        source_title=body.source_title,
-    )
+__all__ = ["handle_translation_pubsub_payload"]

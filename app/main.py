@@ -12,6 +12,7 @@ from . import schemas
 from .gemini_translate import translate_and_detect
 from .hooks_translate import sync_translations_from_hook
 from .pubsub_client import publisher
+from .translation_job import handle_translation_pubsub_payload
 
 logger = logging.getLogger(__name__)
 app = FastAPI(title="Forum Message Services", version="0.1.0")
@@ -188,8 +189,6 @@ async def pubsub_push_translation(request: Request):
     except (ValueError, KeyError, json.JSONDecodeError) as e:
         logger.warning("Failed to decode translation push data: %s", e)
         raise HTTPException(status_code=400, detail="Invalid message.data") from e
-
-    from subscriber.translation_handler import handle_translation_pubsub_payload
 
     try:
         result = await asyncio.to_thread(handle_translation_pubsub_payload, payload)

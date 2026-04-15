@@ -1,4 +1,4 @@
-"""subscriber/translation_handler：Pub/Sub 翻譯 payload 驗證與白名單。"""
+"""app.translation_job：Pub/Sub 翻譯 payload 驗證與白名單。"""
 
 from __future__ import annotations
 
@@ -8,8 +8,6 @@ import pytest
 
 
 def test_handle_translation_pubsub_post_calls_sync(monkeypatch: pytest.MonkeyPatch) -> None:
-    from subscriber import translation_handler as th
-
     called: dict = {}
 
     def fake_sync(*, article_type, item_id, source_text, source_title):
@@ -19,9 +17,11 @@ def test_handle_translation_pubsub_post_calls_sync(monkeypatch: pytest.MonkeyPat
         called["source_title"] = source_title
         return {"id": item_id, "type": article_type, "updated_fields": []}
 
-    monkeypatch.setattr(th, "sync_translations_from_hook", fake_sync)
+    monkeypatch.setattr("app.translation_job.sync_translations_from_hook", fake_sync)
 
-    out = th.handle_translation_pubsub_payload(
+    from app.translation_job import handle_translation_pubsub_payload
+
+    out = handle_translation_pubsub_payload(
         {
             "type": "post",
             "id": "p1",
@@ -39,12 +39,12 @@ def test_handle_translation_pubsub_post_calls_sync(monkeypatch: pytest.MonkeyPat
 
 
 def test_handle_translation_pubsub_comment(monkeypatch: pytest.MonkeyPatch) -> None:
-    from subscriber import translation_handler as th
-
     mock = MagicMock(return_value={"ok": True})
-    monkeypatch.setattr(th, "sync_translations_from_hook", mock)
+    monkeypatch.setattr("app.translation_job.sync_translations_from_hook", mock)
 
-    th.handle_translation_pubsub_payload({"type": "comment", "id": "c1"})
+    from app.translation_job import handle_translation_pubsub_payload
+
+    handle_translation_pubsub_payload({"type": "comment", "id": "c1"})
     mock.assert_called_once_with(
         article_type="comment",
         item_id="c1",
@@ -54,20 +54,19 @@ def test_handle_translation_pubsub_comment(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_handle_translation_rejects_topic(monkeypatch: pytest.MonkeyPatch) -> None:
-    from subscriber import translation_handler as th
-
     monkeypatch.setattr(
-        th,
-        "sync_translations_from_hook",
+        "app.translation_job.sync_translations_from_hook",
         MagicMock(side_effect=AssertionError("should not run")),
     )
 
+    from app.translation_job import handle_translation_pubsub_payload
+
     with pytest.raises(ValueError, match="post\\|comment"):
-        th.handle_translation_pubsub_payload({"type": "topic", "id": "t1"})
+        handle_translation_pubsub_payload({"type": "topic", "id": "t1"})
 
 
 def test_handle_translation_invalid_payload() -> None:
-    from subscriber import translation_handler as th
+    from app.translation_job import handle_translation_pubsub_payload
 
     with pytest.raises(ValueError, match="invalid translation payload"):
-        th.handle_translation_pubsub_payload({"type": "post"})
+        handle_translation_pubsub_payload({"type": "post"})

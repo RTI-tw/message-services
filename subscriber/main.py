@@ -7,7 +7,7 @@ from google.cloud import pubsub_v1
 
 from .config import get_settings
 from .handlers import handle_event
-from .translation_handler import handle_translation_pubsub_payload
+from app.translation_job import handle_translation_pubsub_payload
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("subscriber")
