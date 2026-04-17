@@ -1,11 +1,24 @@
 import json
 import logging
 from functools import lru_cache
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from .config import get_settings
 
 logger = logging.getLogger(__name__)
+
+
+class GeminiBlockedError(ValueError):
+    """Gemini 因內容政策擋下翻譯請求。"""
+
+
+_COPYRIGHT_FALLBACK_INSTRUCTION = """
+
+SAFETY FALLBACK:
+- If a literal translation would reproduce copyrighted text or otherwise trigger policy blocks, do not translate line-by-line.
+- Instead, provide a concise paraphrased translation in each target language that preserves the original meaning without closely reproducing the wording.
+- Keep the same JSON schema and language keys.
+"""
 
 
 @lru_cache(maxsize=8)
@@ -31,17 +44,89 @@ def _cached_generative_model(model_name: str, system_instruction: str) -> Any:
     )
 
 
+def _response_finish_reason(response: Any) -> Optional[int]:
+    candidates = getattr(response, "candidates", None)
+    if not candidates:
+        return None
+
+    first = candidates[0]
+    finish_reason = getattr(first, "finish_reason", None)
+    if finish_reason is None:
+        return None
+    if isinstance(finish_reason, int):
+        return finish_reason
+
+    for value in (finish_reason, getattr(finish_reason, "value", None)):
+        try:
+            if value is not None:
+                return int(value)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _response_debug_details(response: Any) -> str:
+    details: list[str] = []
+    finish_reason = _response_finish_reason(response)
+    if finish_reason is not None:
+        details.append(f"finish_reason={finish_reason}")
+
+    prompt_feedback = getattr(response, "prompt_feedback", None)
+    block_reason = getattr(prompt_feedback, "block_reason", None)
+    if block_reason is not None:
+        details.append(f"block_reason={block_reason}")
+
+    return ", ".join(details)
+
+
+def _extract_response_text(response: Any) -> str:
+    try:
+        raw = getattr(response, "text", None) or ""
+    except Exception as e:  # noqa: BLE001
+        finish_reason = _response_finish_reason(response)
+        if finish_reason == 4:
+            raise GeminiBlockedError(
+                "Gemini blocked literal translation as possible copyrighted material"
+            ) from e
+
+        detail = _response_debug_details(response)
+        suffix = f" ({detail})" if detail else ""
+        raise RuntimeError(f"Gemini response accessor failed{suffix}: {e}") from e
+
+    if raw.strip():
+        return raw
+
+    finish_reason = _response_finish_reason(response)
+    if finish_reason == 4:
+        raise GeminiBlockedError(
+            "Gemini blocked literal translation as possible copyrighted material"
+        )
+
+    detail = _response_debug_details(response)
+    suffix = f" ({detail})" if detail else ""
+    raise RuntimeError(f"Gemini 回傳空內容{suffix}")
+
+
 def _call_gemini_json(system_instruction: str, user_prompt: str) -> Dict[str, Any]:
     settings = get_settings()
     if not settings.gemini_api_key:
         raise RuntimeError("GEMINI_API_KEY 環境變數未設定")
 
     model = _cached_generative_model(settings.gemini_model, system_instruction)
-
-    response = model.generate_content(user_prompt)
-    raw = getattr(response, "text", None) or ""
-    if not raw.strip():
-        raise RuntimeError("Gemini 回傳空內容")
+    try:
+        raw = _extract_response_text(model.generate_content(user_prompt))
+    except GeminiBlockedError:
+        logger.info("Gemini translation blocked; retrying with paraphrase fallback")
+        fallback_model = _cached_generative_model(
+            settings.gemini_model,
+            system_instruction + _COPYRIGHT_FALLBACK_INSTRUCTION,
+        )
+        try:
+            raw = _extract_response_text(fallback_model.generate_content(user_prompt))
+        except GeminiBlockedError as e:
+            raise GeminiBlockedError(
+                "Gemini blocked translation because the text appears to reproduce copyrighted material"
+            ) from e
 
     try:
         return json.loads(raw)

@@ -9,10 +9,10 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from pydantic import ValidationError
 
 from . import schemas
-from .gemini_translate import translate_and_detect
+from .gemini_translate import GeminiBlockedError, translate_and_detect
 from .hooks_translate import sync_translations_from_hook
 from .pubsub_client import publisher
-from .translation_job import handle_translation_pubsub_payload
+from .translation_job import build_translation_log_entry, handle_translation_pubsub_payload
 
 logger = logging.getLogger(__name__)
 app = FastAPI(title="Forum Message Services", version="0.1.0")
@@ -192,18 +192,65 @@ async def pubsub_push_translation(request: Request):
 
     try:
         result = await asyncio.to_thread(handle_translation_pubsub_payload, payload)
-        logger.info("pubsub push translation done: %s", result)
+        logger.info(
+            build_translation_log_entry(
+                "translation_push_done",
+                payload,
+                action="ack",
+                updated_fields=result.get("updated_fields", []),
+                detect_lang=result.get("detect_lang"),
+            )
+        )
+        return {}
+    except GeminiBlockedError as e:
+        logger.warning(
+            build_translation_log_entry(
+                "translation_push_blocked",
+                payload,
+                action="ack",
+                error_code="gemini_blocked",
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+        )
         return {}
     except ValueError as e:
-        logger.warning("translation push skipped (ack): %s", e)
+        logger.warning(
+            build_translation_log_entry(
+                "translation_push_skipped",
+                payload,
+                action="ack",
+                error_code="invalid_payload",
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+        )
         return {}
     except RuntimeError as e:
-        logger.warning("translation push transient failure: %s", e)
+        logger.warning(
+            build_translation_log_entry(
+                "translation_push_retry",
+                payload,
+                action="retry",
+                error_code="runtime_error",
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+        )
         raise HTTPException(
             status_code=503, detail=_runtime_error_http_detail(e)
         ) from e
     except Exception as e:  # noqa: BLE001
-        logger.exception("translation push failed: %s", e)
+        logger.exception(
+            build_translation_log_entry(
+                "translation_push_failed",
+                payload,
+                action="retry",
+                error_code="unexpected_error",
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+        )
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
@@ -252,6 +299,12 @@ async def translate_article(body: schemas.TranslateRequest):
     """
     try:
         raw = await asyncio.to_thread(translate_and_detect, body.text.strip())
+    except ValueError as e:
+        logger.warning("translate ValueError: %s", e)
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "gemini_blocked", "message": str(e)},
+        ) from e
     except RuntimeError as e:
         logger.warning("translate RuntimeError: %s", e)
         raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
@@ -268,4 +321,3 @@ async def translate_article(body: schemas.TranslateRequest):
         ) from e
 
     return parsed.model_dump(mode="json", by_alias=True)
-

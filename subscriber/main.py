@@ -7,7 +7,8 @@ from google.cloud import pubsub_v1
 
 from .config import get_settings
 from .handlers import handle_event
-from app.translation_job import handle_translation_pubsub_payload
+from app.gemini_translate import GeminiBlockedError
+from app.translation_job import build_translation_log_entry, handle_translation_pubsub_payload
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("subscriber")
@@ -58,17 +59,59 @@ def main() -> None:
         def translation_callback(message) -> None:
             try:
                 payload = json.loads(message.data.decode("utf-8"))
-                logger.info("Received translation_sync message: %s", payload)
+                logger.info(
+                    build_translation_log_entry(
+                        "translation_sync_received",
+                        payload,
+                        action="process",
+                    )
+                )
                 result = handle_translation_pubsub_payload(payload)
-                logger.info("translation_sync done: %s", result)
+                logger.info(
+                    build_translation_log_entry(
+                        "translation_sync_done",
+                        payload,
+                        action="ack",
+                        updated_fields=result.get("updated_fields", []),
+                        detect_lang=result.get("detect_lang"),
+                    )
+                )
+                message.ack()
+            except GeminiBlockedError as exc:
+                logger.warning(
+                    build_translation_log_entry(
+                        "translation_sync_blocked",
+                        payload,
+                        action="ack",
+                        error_code="gemini_blocked",
+                        error_type=type(exc).__name__,
+                        error=str(exc),
+                    )
+                )
                 message.ack()
             except (json.JSONDecodeError, ValueError) as exc:
                 logger.warning(
-                    "translation_sync skipped (ack, no retry): %s", exc
+                    build_translation_log_entry(
+                        "translation_sync_skipped",
+                        payload if "payload" in locals() and isinstance(payload, dict) else {},
+                        action="ack",
+                        error_code="invalid_payload",
+                        error_type=type(exc).__name__,
+                        error=str(exc),
+                    )
                 )
                 message.ack()
             except Exception as exc:  # noqa: BLE001
-                logger.exception("translation_sync failed (nack for retry): %s", exc)
+                logger.exception(
+                    build_translation_log_entry(
+                        "translation_sync_failed",
+                        payload if "payload" in locals() and isinstance(payload, dict) else {},
+                        action="retry",
+                        error_code="unexpected_error",
+                        error_type=type(exc).__name__,
+                        error=str(exc),
+                    )
+                )
                 message.nack()
 
         sub_path = _build_subscription_path(
@@ -95,4 +138,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

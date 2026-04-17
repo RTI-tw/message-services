@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, Dict
 
 from pydantic import ValidationError
@@ -36,3 +37,29 @@ def handle_translation_pubsub_payload(payload: Dict[str, Any]) -> Dict[str, Any]
         source_text=body.source_text,
         source_title=body.source_title,
     )
+
+
+def translation_log_context(payload: Dict[str, Any]) -> Dict[str, Any]:
+    article_type = payload.get("type") or payload.get("article_type")
+    item_id = payload.get("id")
+    source_text = payload.get("source_text")
+    source_title = payload.get("source_title")
+    return {
+        "article_type": article_type,
+        "item_id": item_id,
+        "has_source_text": bool((source_text or "").strip())
+        if isinstance(source_text, str)
+        else source_text is not None,
+        "has_source_title": bool((source_title or "").strip())
+        if isinstance(source_title, str)
+        else source_title is not None,
+    }
+
+
+def build_translation_log_entry(
+    event: str,
+    payload: Dict[str, Any],
+    **extra: Any,
+) -> str:
+    entry = {"event": event, **translation_log_context(payload), **extra}
+    return json.dumps(entry, ensure_ascii=False, sort_keys=True)
