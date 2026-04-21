@@ -105,6 +105,7 @@ class Comment(BaseModel):
     parent_id: Optional[str] = None
     root_id: Optional[str] = None
     state: Optional[CommentState] = CommentState.public
+    status: Optional[str] = None
     published_date: Optional[datetime] = None
     is_edited: Optional[bool] = False
     is_active: Optional[bool] = True
@@ -192,4 +193,3 @@ class KeystoneHookSyncTranslationRequest(BaseModel):
         default=None,
         description="Post／Content 選填；若省略則由 GQL 讀取該筆 title 再翻譯為 title_zh～title_th",
     )
-

@@ -90,6 +90,7 @@ def test_comment_create_202(client: TestClient, publisher_mock: MagicMock) -> No
             "member_id": "m1",
             "post_id": "p1",
             "content": "hello",
+            "status": "pending",
         },
     )
     assert res.status_code == 202
@@ -98,6 +99,7 @@ def test_comment_create_202(client: TestClient, publisher_mock: MagicMock) -> No
     assert env["entity"] == "comment"
     assert env["operation"] == "create"
     assert env["data"]["content"] == "hello"
+    assert env["data"]["status"] == "pending"
 
 
 def test_reaction_create_202(client: TestClient, publisher_mock: MagicMock) -> None:

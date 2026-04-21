@@ -163,6 +163,7 @@ def _comment_input_from_event(data: Dict[str, Any]) -> Dict[str, Any]:
         "content_id",
         "content_th",
         "state",
+        "status",
         "published_date",
         "is_edited",
         "is_active",

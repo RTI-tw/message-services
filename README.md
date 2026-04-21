@@ -241,7 +241,10 @@ pytest
 
 並以 GraphQL `updatePost` / `updateComment` 同步更新 `language` 與各語系欄位（Keystone 6 GraphQL snake_case）。
 
-並會同時估算 `spamScore`（0–1）寫回 Keystone 的 `spamScore` 欄位。
+並會同時估算 `spamScore`（0–1）寫回 Keystone 的 `spamScore` 欄位。翻譯同步目前也會依 `spamScore` 做基本審核欄位更新：
+
+- `post`：讀取現有 `status`。若 `spamScore > 0.8`，更新 `status` 為 `reject`；若現有 `status` 為 `pending` 且 `spamScore < 0.5`，更新為 `published`；介於 `0.5`～`0.8` 則維持 `pending`。
+- `comment`：讀取現有 `status`。若 `spamScore > 0.8`，更新 `status` 為 `reject`；若現有 `status` 為 `pending` 且 `spamScore < 0.5`，更新為 `published`；介於 `0.5`～`0.8` 則維持 `pending`。若 comment 已是其他人工狀態，低風險翻譯不會自動改回 `published`。
 
 ```json
 {
@@ -279,4 +282,3 @@ pytest
   }
 }
 ```
-

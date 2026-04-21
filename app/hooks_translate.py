@@ -13,6 +13,11 @@ ArticleType = Literal[
     "forbiddenKeyword",
 ]
 
+LOW_RISK_SPAM_SCORE = 0.5
+HIGH_RISK_SPAM_SCORE = 0.8
+POST_REJECT_STATUS = "reject"
+COMMENT_REJECT_STATUS = "reject"
+
 QUERY_POST = """
 query PostForTranslate($id: ID!) {
   post(where: { id: $id }) {
@@ -20,6 +25,7 @@ query PostForTranslate($id: ID!) {
     title
     content
     language
+    status
   }
 }
 """
@@ -30,6 +36,7 @@ query CommentForTranslate($id: ID!) {
     id
     content
     language
+    status
   }
 }
 """
@@ -195,8 +202,44 @@ def _entity_supports_spam_score(entity: ArticleType) -> bool:
     return entity in ("post", "comment")
 
 
+def _post_status_for_score(
+    entity: ArticleType, spam_score: float, current_status: Optional[str] = None
+) -> Optional[str]:
+    """Map Gemini risk score to Keystone status. Keystone currently uses `reject`."""
+    if entity != "post":
+        return None
+
+    if spam_score > HIGH_RISK_SPAM_SCORE:
+        return POST_REJECT_STATUS
+    if current_status == "pending":
+        if spam_score < LOW_RISK_SPAM_SCORE:
+            return "published"
+        return "pending"
+    if current_status == "published":
+        return "published"
+
+    return None
+
+
+def _comment_status_for_score(
+    spam_score: float, current_status: Optional[str] = None
+) -> Optional[str]:
+    if spam_score > HIGH_RISK_SPAM_SCORE:
+        return COMMENT_REJECT_STATUS
+    if current_status == "pending":
+        if spam_score < LOW_RISK_SPAM_SCORE:
+            return "published"
+        return "pending"
+    if current_status == "published":
+        return "published"
+    return None
+
+
 def _build_update_data(
-    entity: ArticleType, gemini_result: Dict[str, Any], source_text: str
+    entity: ArticleType,
+    gemini_result: Dict[str, Any],
+    source_text: str,
+    current_status: Optional[str] = None,
 ) -> Dict[str, Any]:
     trans = gemini_result.get("translation")
     if not isinstance(trans, dict):
@@ -216,6 +259,16 @@ def _build_update_data(
                 v = float(spam_score)
                 v = max(0.0, min(1.0, v))
                 data["spamScore"] = v
+                if entity == "post":
+                    moderation_status = _post_status_for_score(
+                        entity, v, current_status
+                    )
+                    if moderation_status:
+                        data["status"] = moderation_status
+                elif entity == "comment":
+                    moderation_status = _comment_status_for_score(v, current_status)
+                    if moderation_status:
+                        data["status"] = moderation_status
             except (TypeError, ValueError):
                 pass
 
@@ -290,14 +343,21 @@ def _sync_post_or_content_translations(
         if article_type == "post"
         else _fetch_content_source_texts
     )
+    current_status: Optional[str] = None
     if not title and not content:
         title, content = fetch_pair(item_id)
+        if article_type == "post":
+            current_status = _fetch_current_status(article_type, item_id)
     elif not title or not content:
         fetched_title, fetched_content = fetch_pair(item_id)
         if not title:
             title = fetched_title
         if not content:
             content = fetched_content
+        if article_type == "post":
+            current_status = _fetch_current_status(article_type, item_id)
+    elif article_type == "post":
+        current_status = _fetch_current_status(article_type, item_id)
 
     if content and title:
         merged = translate_title_and_content_merged(
@@ -306,12 +366,16 @@ def _sync_post_or_content_translations(
             include_spam_for_body=(article_type == "post"),
         )
         update_data.update(
-            _build_update_data(article_type, merged["content"], content)
+            _build_update_data(
+                article_type, merged["content"], content, current_status
+            )
         )
         update_data.update(_build_title_update_data(merged["title"], title))
     elif content:
         content_result = translate_and_detect(content)
-        update_data.update(_build_update_data(article_type, content_result, content))
+        update_data.update(
+            _build_update_data(article_type, content_result, content, current_status)
+        )
     elif title:
         title_result = translate_and_detect(title)
         update_data.update(_build_title_update_data(title_result, title))
@@ -341,6 +405,19 @@ def _fetch_source_text(article_type: ArticleType, item_id: str) -> str:
             f"{field} 為空，無法翻譯（請在 CMS 填寫原文或改傳 source_text）"
         )
     return text
+
+
+def _fetch_current_status(article_type: ArticleType, item_id: str) -> Optional[str]:
+    if article_type not in ("post", "comment"):
+        return None
+
+    query, node_key, _field = _FETCH_CONFIG[article_type]
+    data = execute_gql(query, {"id": item_id})
+    node = data.get(node_key)
+    if not node:
+        raise ValueError(f"{article_type} id={item_id} 不存在")
+    status = node.get("status")
+    return str(status) if status else None
 
 
 def _fetch_post_source_texts(item_id: str) -> Tuple[str, str]:
@@ -374,10 +451,22 @@ def sync_translations_from_hook(
         )
     else:
         text = (source_text or "").strip()
+        current_status = (
+            _fetch_current_status(article_type, item_id)
+            if article_type in ("post", "comment")
+            else None
+        )
         if not text:
             text = _fetch_source_text(article_type, item_id)
+            if current_status is None and article_type in ("post", "comment"):
+                current_status = _fetch_current_status(article_type, item_id)
         gemini_result = translate_and_detect(text)
-        update_data = _build_update_data(article_type, gemini_result, text)
+        update_data = _build_update_data(
+            article_type,
+            gemini_result,
+            text,
+            current_status,
+        )
 
     if article_type == "post":
         execute_gql(MUTATION_UPDATE_POST, {"id": item_id, "data": update_data})

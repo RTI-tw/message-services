@@ -235,6 +235,10 @@ def test_sync_post_or_content_calls_merged_once_when_title_and_body(
         "app.hooks_translate.translate_and_detect",
         fake_detect,
     )
+    monkeypatch.setattr(
+        "app.hooks_translate._fetch_current_status",
+        lambda _article_type, _item_id: "pending",
+    )
 
     data = _sync_post_or_content_translations(
         "post",
@@ -265,6 +269,7 @@ def test_sync_post_or_content_calls_detect_only_when_content_only(
                 "title": "",
                 "content": "只有正文",
                 "language": "zh",
+                "status": "pending",
             }
         }
 
@@ -391,3 +396,174 @@ def test_sync_post_or_content_content_entity_no_spam_in_merge(
 
     _sync_post_or_content_translations("content", "x", "body", "title")
     assert seen.get("spam") is False
+
+
+def test_build_update_data_sets_post_status_from_pending_score() -> None:
+    from app.hooks_translate import _build_update_data
+
+    base_result = {
+        "detect-lang": "zh-tw",
+        "translation": {"zh-tw": "原文", "en": "en"},
+    }
+
+    low = _build_update_data(
+        "post", {**base_result, "spamScore": 0.49}, "原文", "pending"
+    )
+    mid = _build_update_data(
+        "post", {**base_result, "spamScore": 0.5}, "原文", "pending"
+    )
+    high = _build_update_data(
+        "post", {**base_result, "spamScore": 0.81}, "原文", "pending"
+    )
+
+    assert low["status"] == "published"
+    assert mid["status"] == "pending"
+    assert high["status"] == "reject"
+
+
+def test_build_update_data_keeps_published_post_unless_high_risk() -> None:
+    from app.hooks_translate import _build_update_data
+
+    base_result = {
+        "detect-lang": "zh-tw",
+        "translation": {"zh-tw": "原文", "en": "en"},
+    }
+
+    safe = _build_update_data(
+        "post", {**base_result, "spamScore": 0.8}, "原文", "published"
+    )
+    high = _build_update_data(
+        "post", {**base_result, "spamScore": 0.81}, "原文", "published"
+    )
+
+    assert safe["status"] == "published"
+    assert high["status"] == "reject"
+
+
+def test_build_update_data_sets_comment_status_from_score() -> None:
+    from app.hooks_translate import _build_update_data
+
+    base_result = {
+        "detect-lang": "zh-tw",
+        "translation": {"zh-tw": "原文", "en": "en"},
+    }
+
+    safe = _build_update_data(
+        "comment",
+        {**base_result, "spamScore": 0.8},
+        "原文",
+        current_status="published",
+    )
+    high = _build_update_data(
+        "comment",
+        {**base_result, "spamScore": 0.81},
+        "原文",
+        current_status="published",
+    )
+    hidden_safe = _build_update_data(
+        "comment",
+        {**base_result, "spamScore": 0.2},
+        "原文",
+        current_status="hidden",
+    )
+    pending_safe = _build_update_data(
+        "comment",
+        {**base_result, "spamScore": 0.49},
+        "原文",
+        current_status="pending",
+    )
+    pending_mid = _build_update_data(
+        "comment",
+        {**base_result, "spamScore": 0.5},
+        "原文",
+        current_status="pending",
+    )
+    pending_high = _build_update_data(
+        "comment",
+        {**base_result, "spamScore": 0.81},
+        "原文",
+        current_status="pending",
+    )
+
+    assert safe["status"] == "published"
+    assert high["status"] == "reject"
+    assert "status" not in hidden_safe
+    assert pending_safe["status"] == "published"
+    assert pending_mid["status"] == "pending"
+    assert pending_high["status"] == "reject"
+
+
+def test_sync_comment_does_not_republish_hidden_safe_comment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.hooks_translate import sync_translations_from_hook
+
+    updates: list[dict] = []
+
+    def fake_execute_gql(query: str, variables: dict) -> dict:
+        if "comment(where:" in query:
+            return {
+                "comment": {
+                    "id": variables["id"],
+                    "content": "原文",
+                    "language": "zh",
+                    "status": "hidden",
+                }
+            }
+        if "updateComment" in query:
+            updates.append(variables["data"])
+            return {"updateComment": {"id": variables["id"]}}
+        raise AssertionError(f"unexpected query: {query}")
+
+    monkeypatch.setattr("app.hooks_translate.execute_gql", fake_execute_gql)
+    monkeypatch.setattr(
+        "app.hooks_translate.translate_and_detect",
+        lambda _text: {
+            "detect-lang": "zh-tw",
+            "translation": {"zh-tw": "原文", "en": "en"},
+            "spamScore": 0.2,
+        },
+    )
+
+    sync_translations_from_hook(article_type="comment", item_id="c1")
+
+    assert len(updates) == 1
+    assert "status" not in updates[0]
+
+
+def test_sync_comment_rejects_high_risk_comment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.hooks_translate import sync_translations_from_hook
+
+    updates: list[dict] = []
+
+    def fake_execute_gql(query: str, variables: dict) -> dict:
+        if "comment(where:" in query:
+            return {
+                "comment": {
+                    "id": variables["id"],
+                    "content": "原文",
+                    "language": "zh",
+                    "status": "published",
+                }
+            }
+        if "updateComment" in query:
+            updates.append(variables["data"])
+            return {"updateComment": {"id": variables["id"]}}
+        raise AssertionError(f"unexpected query: {query}")
+
+    monkeypatch.setattr("app.hooks_translate.execute_gql", fake_execute_gql)
+    monkeypatch.setattr(
+        "app.hooks_translate.translate_and_detect",
+        lambda _text: {
+            "detect-lang": "zh-tw",
+            "translation": {"zh-tw": "原文", "en": "en"},
+            "spamScore": 0.81,
+        },
+    )
+
+    sync_translations_from_hook(article_type="comment", item_id="c1")
+
+    assert len(updates) == 1
+    assert updates[0]["status"] == "reject"
