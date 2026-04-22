@@ -254,14 +254,39 @@ def test_sync_post_or_content_calls_merged_once_when_title_and_body(
     assert data["language"] == "en"
 
 
-def test_sync_post_or_content_does_not_fetch_status_when_sources_provided(
+def test_sync_post_or_content_uses_status_when_sources_provided(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.hooks_translate import _sync_post_or_content_translations
 
     monkeypatch.setattr(
         "app.hooks_translate._fetch_current_status",
-        MagicMock(side_effect=AssertionError("status should not be fetched")),
+        MagicMock(return_value="pending"),
+    )
+    monkeypatch.setattr(
+        "app.hooks_translate.translate_title_and_content_merged",
+        lambda *_args, **_kwargs: _fake_gemini_merged_payload(),
+    )
+
+    data = _sync_post_or_content_translations(
+        "post",
+        "56",
+        "文",
+        "標",
+    )
+
+    assert data["spamScore"] == pytest.approx(0.42)
+    assert data["status"] == "published"
+
+
+def test_sync_post_or_content_ignores_missing_status_when_sources_provided(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.hooks_translate import _sync_post_or_content_translations
+
+    monkeypatch.setattr(
+        "app.hooks_translate._fetch_current_status",
+        MagicMock(side_effect=ValueError("post id=56 不存在")),
     )
     monkeypatch.setattr(
         "app.hooks_translate.translate_title_and_content_merged",
@@ -556,7 +581,7 @@ def test_sync_comment_does_not_republish_hidden_safe_comment(
     assert "status" not in updates[0]
 
 
-def test_sync_comment_does_not_fetch_status_when_source_text_provided(
+def test_sync_comment_uses_status_when_source_text_provided(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.hooks_translate import sync_translations_from_hook
@@ -565,7 +590,14 @@ def test_sync_comment_does_not_fetch_status_when_source_text_provided(
 
     def fake_execute_gql(query: str, variables: dict) -> dict:
         if "comment(where:" in query:
-            raise AssertionError("comment should not be fetched")
+            return {
+                "comment": {
+                    "id": variables["id"],
+                    "content": "原文",
+                    "language": "zh",
+                    "status": "pending",
+                }
+            }
         if "updateComment" in query:
             updates.append(variables["data"])
             return {"updateComment": {"id": variables["id"]}}
@@ -588,7 +620,7 @@ def test_sync_comment_does_not_fetch_status_when_source_text_provided(
     )
 
     assert len(updates) == 1
-    assert "status" not in updates[0]
+    assert updates[0]["status"] == "published"
 
 
 def test_sync_comment_rejects_high_risk_comment(

@@ -356,6 +356,8 @@ def _sync_post_or_content_translations(
             content = fetched_content
         if article_type == "post":
             current_status = _fetch_current_status(article_type, item_id)
+    elif article_type == "post":
+        current_status = _try_fetch_current_status(article_type, item_id)
 
     if content and title:
         merged = translate_title_and_content_merged(
@@ -418,6 +420,15 @@ def _fetch_current_status(article_type: ArticleType, item_id: str) -> Optional[s
     return str(status) if status else None
 
 
+def _try_fetch_current_status(article_type: ArticleType, item_id: str) -> Optional[str]:
+    try:
+        return _fetch_current_status(article_type, item_id)
+    except ValueError as e:
+        if "不存在" in str(e):
+            return None
+        raise
+
+
 def _fetch_post_source_texts(item_id: str) -> Tuple[str, str]:
     data = execute_gql(QUERY_POST, {"id": item_id})
     node = data.get("post")
@@ -450,6 +461,8 @@ def sync_translations_from_hook(
     else:
         text = (source_text or "").strip()
         current_status: Optional[str] = None
+        if text and article_type in ("post", "comment"):
+            current_status = _try_fetch_current_status(article_type, item_id)
         if not text:
             text = _fetch_source_text(article_type, item_id)
             if article_type in ("post", "comment"):
