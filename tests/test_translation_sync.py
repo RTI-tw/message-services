@@ -254,6 +254,31 @@ def test_sync_post_or_content_calls_merged_once_when_title_and_body(
     assert data["language"] == "en"
 
 
+def test_sync_post_or_content_does_not_fetch_status_when_sources_provided(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.hooks_translate import _sync_post_or_content_translations
+
+    monkeypatch.setattr(
+        "app.hooks_translate._fetch_current_status",
+        MagicMock(side_effect=AssertionError("status should not be fetched")),
+    )
+    monkeypatch.setattr(
+        "app.hooks_translate.translate_title_and_content_merged",
+        lambda *_args, **_kwargs: _fake_gemini_merged_payload(),
+    )
+
+    data = _sync_post_or_content_translations(
+        "post",
+        "56",
+        "文",
+        "標",
+    )
+
+    assert data["spamScore"] == pytest.approx(0.42)
+    assert "status" not in data
+
+
 def test_sync_post_or_content_calls_detect_only_when_content_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -526,6 +551,41 @@ def test_sync_comment_does_not_republish_hidden_safe_comment(
     )
 
     sync_translations_from_hook(article_type="comment", item_id="c1")
+
+    assert len(updates) == 1
+    assert "status" not in updates[0]
+
+
+def test_sync_comment_does_not_fetch_status_when_source_text_provided(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.hooks_translate import sync_translations_from_hook
+
+    updates: list[dict] = []
+
+    def fake_execute_gql(query: str, variables: dict) -> dict:
+        if "comment(where:" in query:
+            raise AssertionError("comment should not be fetched")
+        if "updateComment" in query:
+            updates.append(variables["data"])
+            return {"updateComment": {"id": variables["id"]}}
+        raise AssertionError(f"unexpected query: {query}")
+
+    monkeypatch.setattr("app.hooks_translate.execute_gql", fake_execute_gql)
+    monkeypatch.setattr(
+        "app.hooks_translate.translate_and_detect",
+        lambda _text: {
+            "detect-lang": "zh-tw",
+            "translation": {"zh-tw": "原文", "en": "en"},
+            "spamScore": 0.2,
+        },
+    )
+
+    sync_translations_from_hook(
+        article_type="comment",
+        item_id="56",
+        source_text="原文",
+    )
 
     assert len(updates) == 1
     assert "status" not in updates[0]

@@ -356,8 +356,6 @@ def _sync_post_or_content_translations(
             content = fetched_content
         if article_type == "post":
             current_status = _fetch_current_status(article_type, item_id)
-    elif article_type == "post":
-        current_status = _fetch_current_status(article_type, item_id)
 
     if content and title:
         merged = translate_title_and_content_merged(
@@ -451,14 +449,10 @@ def sync_translations_from_hook(
         )
     else:
         text = (source_text or "").strip()
-        current_status = (
-            _fetch_current_status(article_type, item_id)
-            if article_type in ("post", "comment")
-            else None
-        )
+        current_status: Optional[str] = None
         if not text:
             text = _fetch_source_text(article_type, item_id)
-            if current_status is None and article_type in ("post", "comment"):
+            if article_type in ("post", "comment"):
                 current_status = _fetch_current_status(article_type, item_id)
         gemini_result = translate_and_detect(text)
         update_data = _build_update_data(
