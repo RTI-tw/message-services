@@ -36,6 +36,7 @@ def handle_translation_pubsub_payload(payload: Dict[str, Any]) -> Dict[str, Any]
         item_id=body.id,
         source_text=body.source_text,
         source_title=body.source_title,
+        source_status=body.source_status,
     )
 
 

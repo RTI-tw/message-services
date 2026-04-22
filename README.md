@@ -255,6 +255,7 @@ pytest
 
 選填 `source_text`：若提供則以此字串翻譯，否則會先 GQL 查詢該筆原文內容。
 `post` 可另外傳 `source_title`（若省略會改由 GQL 讀取 title）。
+`post` / `comment` 可另外傳 `status`（或 `source_status`）表示 CMS 發送 job 當下的 moderation status；建議建立文章／留言時帶 `pending`，避免新資料剛建立後回查 status 的 race condition 影響 `spamScore < 0.5` 自動轉 `published`。
 
 若回傳 **503**，回應 body 會含 `detail.code`（例如 `gemini_config` = 未設 `GEMINI_API_KEY`，`keystone_config` = 未設 `KEYSTONE_GQL_ENDPOINT`，`graphql_error` = Keystone GQL 錯誤）。請在 Cloud Run 環境變數確認上述變數與 GCP 已啟用 **Generative Language API**。
 

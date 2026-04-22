@@ -333,6 +333,7 @@ def _sync_post_or_content_translations(
     item_id: str,
     source_text: Optional[str],
     source_title: Optional[str],
+    source_status: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Post／Content：翻譯正文（content_*）與標題（title_*）。title 與 content 皆有時改為單次 Gemini 合併請求。"""
     update_data: Dict[str, Any] = {}
@@ -343,7 +344,7 @@ def _sync_post_or_content_translations(
         if article_type == "post"
         else _fetch_content_source_texts
     )
-    current_status: Optional[str] = None
+    current_status = (source_status or "").strip() or None
     if not title and not content:
         title, content = fetch_pair(item_id)
         if article_type == "post":
@@ -356,7 +357,7 @@ def _sync_post_or_content_translations(
             content = fetched_content
         if article_type == "post":
             current_status = _fetch_current_status(article_type, item_id)
-    elif article_type == "post":
+    elif article_type == "post" and current_status is None:
         current_status = _try_fetch_current_status(article_type, item_id)
 
     if content and title:
@@ -448,6 +449,7 @@ def sync_translations_from_hook(
     item_id: str,
     source_text: Optional[str] = None,
     source_title: Optional[str] = None,
+    source_status: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     以 Gemini 翻譯後，透過 GQL update* 寫入 language（若有）與各語系欄位。
@@ -456,12 +458,12 @@ def sync_translations_from_hook(
 
     if article_type in ("post", "content"):
         update_data = _sync_post_or_content_translations(
-            article_type, item_id, source_text, source_title
+            article_type, item_id, source_text, source_title, source_status
         )
     else:
         text = (source_text or "").strip()
-        current_status: Optional[str] = None
-        if text and article_type in ("post", "comment"):
+        current_status = (source_status or "").strip() or None
+        if text and article_type in ("post", "comment") and current_status is None:
             current_status = _try_fetch_current_status(article_type, item_id)
         if not text:
             text = _fetch_source_text(article_type, item_id)

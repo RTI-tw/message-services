@@ -10,11 +10,12 @@ import pytest
 def test_handle_translation_pubsub_post_calls_sync(monkeypatch: pytest.MonkeyPatch) -> None:
     called: dict = {}
 
-    def fake_sync(*, article_type, item_id, source_text, source_title):
+    def fake_sync(*, article_type, item_id, source_text, source_title, source_status):
         called["article_type"] = article_type
         called["item_id"] = item_id
         called["source_text"] = source_text
         called["source_title"] = source_title
+        called["source_status"] = source_status
         return {"id": item_id, "type": article_type, "updated_fields": []}
 
     monkeypatch.setattr("app.translation_job.sync_translations_from_hook", fake_sync)
@@ -27,6 +28,7 @@ def test_handle_translation_pubsub_post_calls_sync(monkeypatch: pytest.MonkeyPat
             "id": "p1",
             "source_text": "body",
             "source_title": "ttl",
+            "status": "pending",
         }
     )
     assert out["id"] == "p1"
@@ -35,6 +37,7 @@ def test_handle_translation_pubsub_post_calls_sync(monkeypatch: pytest.MonkeyPat
         "item_id": "p1",
         "source_text": "body",
         "source_title": "ttl",
+        "source_status": "pending",
     }
 
 
@@ -50,6 +53,7 @@ def test_handle_translation_pubsub_comment(monkeypatch: pytest.MonkeyPatch) -> N
         item_id="c1",
         source_text=None,
         source_title=None,
+        source_status=None,
     )
 
 

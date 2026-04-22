@@ -279,6 +279,32 @@ def test_sync_post_or_content_uses_status_when_sources_provided(
     assert data["status"] == "published"
 
 
+def test_sync_post_or_content_prefers_source_status_when_sources_provided(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.hooks_translate import _sync_post_or_content_translations
+
+    monkeypatch.setattr(
+        "app.hooks_translate._fetch_current_status",
+        MagicMock(side_effect=AssertionError("status should come from payload")),
+    )
+    monkeypatch.setattr(
+        "app.hooks_translate.translate_title_and_content_merged",
+        lambda *_args, **_kwargs: _fake_gemini_merged_payload(),
+    )
+
+    data = _sync_post_or_content_translations(
+        "post",
+        "56",
+        "文",
+        "標",
+        "pending",
+    )
+
+    assert data["spamScore"] == pytest.approx(0.42)
+    assert data["status"] == "published"
+
+
 def test_sync_post_or_content_ignores_missing_status_when_sources_provided(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -193,3 +193,8 @@ class KeystoneHookSyncTranslationRequest(BaseModel):
         default=None,
         description="Post／Content 選填；若省略則由 GQL 讀取該筆 title 再翻譯為 title_zh～title_th",
     )
+    source_status: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("source_status", "status"),
+        description="選填；CMS 發送 job 當下的 moderation status，例如 pending/published/reject",
+    )
