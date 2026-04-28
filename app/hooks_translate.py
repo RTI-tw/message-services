@@ -198,7 +198,7 @@ def _entity_supports_language_field(entity: ArticleType) -> bool:
     return entity in ("post", "comment", "topic", "content", "forbiddenKeyword")
 
 
-def _entity_supports_spam_score(entity: ArticleType) -> bool:
+def _entity_supports_violation_score(entity: ArticleType) -> bool:
     return entity in ("post", "comment")
 
 
@@ -252,12 +252,16 @@ def _build_update_data(
         gemini_result.get("detect-lang") or gemini_result.get("detect_lang")
     )
 
-    if _entity_supports_spam_score(entity):
-        spam_score = gemini_result.get("spamScore")
-        if spam_score is not None:
+    if _entity_supports_violation_score(entity):
+        # Prefer the new key; keep backward compatibility with older model output.
+        violation_score = gemini_result.get("violationScore")
+        if violation_score is None:
+            violation_score = gemini_result.get("spamScore")
+        if violation_score is not None:
             try:
-                v = float(spam_score)
+                v = float(violation_score)
                 v = max(0.0, min(1.0, v))
+                # Keystone schema is still `spamScore`; keep write key unchanged.
                 data["spamScore"] = v
                 if entity == "post":
                     moderation_status = _post_status_for_score(

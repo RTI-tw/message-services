@@ -65,10 +65,12 @@ class Post(BaseModel):
     ip: Optional[str] = Field(default=None, description="發文 IP")
     spam_score: Optional[float] = Field(
         default=None,
-        validation_alias=AliasChoices("spam_score", "spamScore"),
+        validation_alias=AliasChoices(
+            "violation_score", "violationScore", "spam_score", "spamScore"
+        ),
         ge=0.0,
         le=1.0,
-        description="SPAM 分數 0–1，對應 Post.spamScore",
+        description="違規風險分數 0–1，寫回 Keystone Post.spamScore",
     )
     status: Optional[str] = Field(
         default=None,
@@ -164,7 +166,11 @@ class GeminiTranslateResponse(BaseModel):
         serialization_alias="detect-lang",
     )
     translation: TranslationFiveLang
-    spamScore: Optional[float] = None
+    violation_score: Optional[float] = Field(
+        default=None,
+        validation_alias=AliasChoices("violationScore", "spamScore"),
+        serialization_alias="violationScore",
+    )
 
 
 class KeystoneHookSyncTranslationRequest(BaseModel):

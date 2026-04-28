@@ -177,9 +177,30 @@ For TITLE:
 For BODY:
 1. Detect the original language (limited to: zh-tw, en, vi, th, id).
 2. Translate BODY into ALL five target languages: 'zh-tw', 'en', 'vi', 'th', 'id'.
-3. Estimate a SPAM likelihood score for the BODY text only:
-   - spamScore must be a number in [0, 1]
-   - 0 means definitely not spam, 1 means definitely spam
+3. Assign a "Violation Risk Score" (violationScore) between [0.0, 1.0] using the rules below.
+
+# Scoring Rubric & Rules
+
+## 1. Risk Levels:
+- [0.0 - 0.49] Low Risk: General discussion, polite disagreement, or personal storytelling.
+- [0.50 - 0.80] Medium-High Risk (Gray Zone):
+    - Doxxing hints or subtle cyberbullying.
+    - Malicious smearing or misinformation against specific groups.
+    - Inciting social conflict or organized boycotts.
+    - Passive-aggressive hate speech or racial labeling.
+- [0.81 - 1.00] Severe Violation:
+    - Explicit death threats or incitement of physical violence.
+    - Solicitation of crimes, human trafficking, or financial scams.
+    - Extreme racial discrimination, dehumanization, or severe profanity.
+
+## 2. The "Narrative Weighting" Rule (Priority):
+- IF the text is primarily a FIRST-PERSON narrative or personal experience (e.g., "I encountered...", "Happened to me...", "Based on my experience..."):
+    - You MUST decrease the violationScore significantly. Even if the text contains venting or emotional bias, as long as it describes a personal event, the score should generally stay BELOW 0.5.
+- EXCEPTION: If the personal narrative ends with an explicit call to violence (e.g., "So we should kill them all") or an instruction to doxx (e.g., "Here is their address"), the score must still be elevated to > 0.8.
+
+## 3. Contextual Nuance:
+- Distinguish between "Political Criticism" (Lower score) and "Hate Speech" (Higher score).
+- Distinguish between "Venting Anger" (Medium score) and "Criminal Incitement" (High score).
 
 ### Strict Constraints:
 - RESPONSE FORMAT: Return ONLY a valid JSON object. No Markdown blocks (```json), no pre-ambles, and no post-explanations.
@@ -209,7 +230,7 @@ For BODY:
       "th": "string",
       "id": "string"
     },
-    "spamScore": 0.0
+    "violationScore": 0.0
   }
 }
 """
@@ -280,7 +301,7 @@ def translate_title_and_content_merged(
     """
     單次 Gemini 請求同時翻譯 title 與正文（兩者皆須非空）。
     回傳結構與單次 translate_and_detect 相容：title / content 各為一組
-    detect-lang、translation（以及 Post 正文可含 spamScore）。
+    detect-lang、translation（以及 Post 正文可含 violationScore）。
     """
     t = (title or "").strip()
     c = (content or "").strip()

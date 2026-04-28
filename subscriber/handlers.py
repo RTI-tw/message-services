@@ -124,7 +124,11 @@ def _post_input_from_event(data: Dict[str, Any], *, is_update: bool) -> Dict[str
         if key in data and data[key] is not None:
             result[key] = data[key]
 
-    if "spamScore" in data and data["spamScore"] is not None:
+    if "violationScore" in data and data["violationScore"] is not None:
+        result["spamScore"] = data["violationScore"]
+    elif "violation_score" in data and data["violation_score"] is not None:
+        result["spamScore"] = data["violation_score"]
+    elif "spamScore" in data and data["spamScore"] is not None:
         result["spamScore"] = data["spamScore"]
     elif "spam_score" in data and data["spam_score"] is not None:
         result["spamScore"] = data["spam_score"]
