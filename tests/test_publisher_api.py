@@ -142,3 +142,40 @@ def test_bookmark_missing_post_id_422(client: TestClient, publisher_mock: MagicM
     res = client.post("/bookmark/create", json={"member_id": "m1"})
     assert res.status_code == 422
     publisher_mock.publish_bookmark_event.assert_not_called()
+
+
+def test_hooks_sync_translations_forwards_source_status(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    called: dict = {}
+
+    def fake_sync(*, article_type, item_id, source_text, source_title, source_status):
+        called["article_type"] = article_type
+        called["item_id"] = item_id
+        called["source_text"] = source_text
+        called["source_title"] = source_title
+        called["source_status"] = source_status
+        return {"ok": True}
+
+    monkeypatch.setattr("app.main.sync_translations_from_hook", fake_sync)
+
+    res = client.post(
+        "/hooks/sync-translations",
+        json={
+            "type": "post",
+            "id": "p1",
+            "source_text": "body",
+            "source_title": "title",
+            "status": "pending",
+        },
+    )
+
+    assert res.status_code == 200
+    assert res.json() == {"ok": True}
+    assert called == {
+        "article_type": "post",
+        "item_id": "p1",
+        "source_text": "body",
+        "source_title": "title",
+        "source_status": "pending",
+    }
