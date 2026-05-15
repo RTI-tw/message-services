@@ -305,6 +305,64 @@ def test_sync_post_or_content_prefers_source_status_when_sources_provided(
     assert data["status"] == "published"
 
 
+def test_sync_post_or_content_falls_back_when_merged_translation_is_malformed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.hooks_translate import _sync_post_or_content_translations
+
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        "app.hooks_translate.translate_title_and_content_merged",
+        MagicMock(side_effect=RuntimeError("Gemini 回傳非合法 JSON: malformed")),
+    )
+    monkeypatch.setattr(
+        "app.hooks_translate._fetch_current_status",
+        MagicMock(return_value="pending"),
+    )
+
+    def fake_detect(text: str) -> dict:
+        calls.append(text)
+        if text == "文":
+            return {
+                "detect-lang": "zh-tw",
+                "translation": {
+                    "zh-tw": "文",
+                    "en": "body",
+                    "vi": "body",
+                    "th": "body",
+                    "id": "body",
+                },
+                "violationScore": 0.42,
+                "spamScore": 0.42,
+            }
+        return {
+            "detect-lang": "zh-tw",
+            "translation": {
+                "zh-tw": "標",
+                "en": "title",
+                "vi": "title",
+                "th": "title",
+                "id": "title",
+            },
+        }
+
+    monkeypatch.setattr("app.hooks_translate.translate_and_detect", fake_detect)
+
+    data = _sync_post_or_content_translations(
+        "post",
+        "56",
+        "文",
+        "標",
+        "pending",
+    )
+
+    assert calls == ["文", "標"]
+    assert data["status"] == "published"
+    assert data["content_en"] == "body"
+    assert data["title_en"] == "title"
+
+
 def test_sync_post_or_content_ignores_missing_status_when_sources_provided(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
