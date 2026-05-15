@@ -1,7 +1,10 @@
+import logging
 from typing import Any, Dict, Literal, Optional, Tuple
 
 from .gemini_translate import translate_and_detect, translate_title_and_content_merged
 from .keystone_gql import execute_gql
+
+logger = logging.getLogger(__name__)
 
 ArticleType = Literal[
     "post",
@@ -365,17 +368,31 @@ def _sync_post_or_content_translations(
         current_status = _try_fetch_current_status(article_type, item_id)
 
     if content and title:
-        merged = translate_title_and_content_merged(
-            title,
-            content,
-            include_spam_for_body=(article_type == "post"),
-        )
-        update_data.update(
-            _build_update_data(
-                article_type, merged["content"], content, current_status
+        try:
+            merged = translate_title_and_content_merged(
+                title,
+                content,
+                include_spam_for_body=(article_type == "post"),
             )
-        )
-        update_data.update(_build_title_update_data(merged["title"], title))
+            update_data.update(
+                _build_update_data(
+                    article_type, merged["content"], content, current_status
+                )
+            )
+            update_data.update(_build_title_update_data(merged["title"], title))
+        except RuntimeError as e:
+            logger.warning(
+                "Merged translation failed for %s id=%s; falling back to separate calls: %s",
+                article_type,
+                item_id,
+                e,
+            )
+            content_result = translate_and_detect(content)
+            title_result = translate_and_detect(title)
+            update_data.update(
+                _build_update_data(article_type, content_result, content, current_status)
+            )
+            update_data.update(_build_title_update_data(title_result, title))
     elif content:
         content_result = translate_and_detect(content)
         update_data.update(
