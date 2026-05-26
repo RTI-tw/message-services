@@ -13,10 +13,9 @@ class Settings:
         # Gemini（文章翻譯）
         self.gemini_api_key: str = (os.getenv("GEMINI_API_KEY") or "").strip()
         _gemini_model = (os.getenv("GEMINI_MODEL") or "").strip()
-        self.gemini_model: str = _gemini_model or "gemini-1.5-flash"
+        self.gemini_model: str = _gemini_model or "gemini-2.5-flash-lite"
 
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

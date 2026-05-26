@@ -26,7 +26,7 @@ pip install -r requirements.txt
 - `KEYSTONE_GQL_ENDPOINT`: Keystone GraphQL URL（Push 收到訊息時寫入用）
 - `KEYSTONE_AUTH_TOKEN`: 選填，呼叫 Keystone 時帶入
 - `GEMINI_API_KEY`: 選填；設定後可使用 `POST /translate`（Gemini 多語翻譯）
-- `GEMINI_MODEL`: 選填，預設 `gemini-1.5-flash`
+- `GEMINI_MODEL`: 選填，預設 `gemini-2.5-flash-lite`
 
 定時匯出 JSON 到 GCS 的 API 已移至 **`cron-services`** 專案（路徑與本 repo 同層），請改部署該服務並設定 `GCS_BUCKET` 等變數。
 
