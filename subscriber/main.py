@@ -8,7 +8,11 @@ from google.cloud import pubsub_v1
 from .config import get_settings
 from .handlers import handle_event
 from app.gemini_translate import GeminiBlockedError
-from app.translation_job import build_translation_log_entry, handle_translation_pubsub_payload
+from app.translation_job import (
+    build_translation_log_entry,
+    handle_translation_pubsub_payload,
+    is_non_retryable_translation_runtime_error,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("subscriber")
@@ -101,6 +105,35 @@ def main() -> None:
                     )
                 )
                 message.ack()
+            except RuntimeError as exc:
+                payload_for_log = (
+                    payload if "payload" in locals() and isinstance(payload, dict) else {}
+                )
+                if is_non_retryable_translation_runtime_error(exc):
+                    logger.warning(
+                        build_translation_log_entry(
+                            "translation_sync_skipped",
+                            payload_for_log,
+                            action="ack",
+                            error_code="gemini_response_format",
+                            error_type=type(exc).__name__,
+                            error=str(exc),
+                        )
+                    )
+                    message.ack()
+                    return
+
+                logger.exception(
+                    build_translation_log_entry(
+                        "translation_sync_failed",
+                        payload_for_log,
+                        action="retry",
+                        error_code="runtime_error",
+                        error_type=type(exc).__name__,
+                        error=str(exc),
+                    )
+                )
+                message.nack()
             except Exception as exc:  # noqa: BLE001
                 logger.exception(
                     build_translation_log_entry(

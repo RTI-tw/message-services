@@ -74,3 +74,14 @@ def test_handle_translation_invalid_payload() -> None:
 
     with pytest.raises(ValueError, match="invalid translation payload"):
         handle_translation_pubsub_payload({"type": "post"})
+
+
+def test_gemini_malformed_json_runtime_error_is_non_retryable() -> None:
+    from app.translation_job import is_non_retryable_translation_runtime_error
+
+    assert is_non_retryable_translation_runtime_error(
+        RuntimeError("Gemini 回傳非合法 JSON: Expecting ',' delimiter")
+    )
+    assert not is_non_retryable_translation_runtime_error(
+        RuntimeError("GraphQL error: upstream unavailable")
+    )

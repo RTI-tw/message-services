@@ -12,7 +12,11 @@ from . import schemas
 from .gemini_translate import GeminiBlockedError, translate_and_detect
 from .hooks_translate import sync_translations_from_hook
 from .pubsub_client import publisher
-from .translation_job import build_translation_log_entry, handle_translation_pubsub_payload
+from .translation_job import (
+    build_translation_log_entry,
+    handle_translation_pubsub_payload,
+    is_non_retryable_translation_runtime_error,
+)
 
 logger = logging.getLogger(__name__)
 app = FastAPI(title="Forum Message Services", version="0.1.0")
@@ -227,6 +231,18 @@ async def pubsub_push_translation(request: Request):
         )
         return {}
     except RuntimeError as e:
+        if is_non_retryable_translation_runtime_error(e):
+            logger.warning(
+                build_translation_log_entry(
+                    "translation_push_skipped",
+                    payload,
+                    action="ack",
+                    error_code="gemini_response_format",
+                    error_type=type(e).__name__,
+                    error=str(e),
+                )
+            )
+            return {}
         logger.warning(
             build_translation_log_entry(
                 "translation_push_retry",
