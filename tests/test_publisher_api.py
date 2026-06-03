@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import json
 from unittest.mock import MagicMock
 
 import pytest
@@ -179,3 +181,30 @@ def test_hooks_sync_translations_forwards_source_status(
         "source_title": "title",
         "source_status": "pending",
     }
+
+
+def test_translation_push_acks_gemini_malformed_json(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.main.handle_translation_pubsub_payload",
+        MagicMock(
+            side_effect=RuntimeError(
+                "Gemini 回傳非合法 JSON: Expecting ',' delimiter"
+            )
+        ),
+    )
+    payload = {
+        "type": "post",
+        "id": "72",
+        "source_text": "body",
+        "source_title": "title",
+    }
+    encoded = base64.b64encode(
+        json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    ).decode("ascii")
+
+    res = client.post("/pubsub/push/translation", json={"message": {"data": encoded}})
+
+    assert res.status_code == 200
+    assert res.json() == {}

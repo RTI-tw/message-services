@@ -15,6 +15,20 @@ from pydantic import ValidationError
 from .hooks_translate import sync_translations_from_hook
 from .schemas import KeystoneHookSyncTranslationRequest
 
+_NON_RETRYABLE_TRANSLATION_RUNTIME_PATTERNS = (
+    "Gemini 回傳非合法 JSON",
+    "Gemini 合併回傳非 JSON",
+    "Gemini 合併回傳缺少",
+)
+
+
+def is_non_retryable_translation_runtime_error(exc: RuntimeError) -> bool:
+    """Gemini response-shape failures are bad model output, not useful Pub/Sub retries."""
+    message = str(exc)
+    return any(
+        pattern in message for pattern in _NON_RETRYABLE_TRANSLATION_RUNTIME_PATTERNS
+    )
+
 
 def handle_translation_pubsub_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     """
