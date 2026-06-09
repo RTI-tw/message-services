@@ -3,6 +3,8 @@ from typing import Any, Dict, Optional
 
 import httpx
 
+from .gcp_auth import invoker_auth_headers
+
 
 _client: Optional[httpx.Client] = None
 
@@ -32,7 +34,14 @@ def _get_client() -> httpx.Client:
 
 def execute_gql(query: str, variables: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     client = _get_client()
-    resp = client.post("", json={"query": query, "variables": variables or {}})
+    # Per-request so the (cached) Google ID token can refresh on expiry. Sent as
+    # X-Serverless-Authorization to authenticate to the locked GQL Cloud Run service.
+    endpoint = (os.getenv("KEYSTONE_GQL_ENDPOINT") or "").strip()
+    resp = client.post(
+        "",
+        json={"query": query, "variables": variables or {}},
+        headers=invoker_auth_headers(endpoint),
+    )
     resp.raise_for_status()
     payload = resp.json()
     if "errors" in payload:
