@@ -43,6 +43,85 @@ Mandatory glossary for en / vi / th / id target translations:
 """
 
 
+_FIVE_LANG_TRANSLATION_RESPONSE_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "zh-tw": {"type": "string"},
+        "en": {"type": "string"},
+        "vi": {"type": "string"},
+        "th": {"type": "string"},
+        "id": {"type": "string"},
+    },
+    "required": ["zh-tw", "en", "vi", "th", "id"],
+}
+
+_SINGLE_TRANSLATION_RESPONSE_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "detect-lang": {"type": "string"},
+        "translation": _FIVE_LANG_TRANSLATION_RESPONSE_SCHEMA,
+        "spamScore": {"type": "number"},
+    },
+    "required": ["detect-lang", "translation", "spamScore"],
+}
+
+_MERGED_TITLE_RESPONSE_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "detect-lang": {"type": "string"},
+        "translation": _FIVE_LANG_TRANSLATION_RESPONSE_SCHEMA,
+    },
+    "required": ["detect-lang", "translation"],
+}
+
+_MERGED_CONTENT_RESPONSE_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "detect-lang": {"type": "string"},
+        "translation": _FIVE_LANG_TRANSLATION_RESPONSE_SCHEMA,
+    },
+    "required": ["detect-lang", "translation"],
+}
+
+_MERGED_POST_CONTENT_RESPONSE_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "detect-lang": {"type": "string"},
+        "translation": _FIVE_LANG_TRANSLATION_RESPONSE_SCHEMA,
+        "violationScore": {"type": "number"},
+    },
+    "required": ["detect-lang", "translation", "violationScore"],
+}
+
+_MERGED_POST_RESPONSE_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "title": _MERGED_TITLE_RESPONSE_SCHEMA,
+        "content": _MERGED_POST_CONTENT_RESPONSE_SCHEMA,
+    },
+    "required": ["title", "content"],
+}
+
+_MERGED_CONTENT_PAIR_RESPONSE_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "title": _MERGED_TITLE_RESPONSE_SCHEMA,
+        "content": _MERGED_CONTENT_RESPONSE_SCHEMA,
+    },
+    "required": ["title", "content"],
+}
+
+
+def _response_schema_for_system_instruction(
+    system_instruction: str,
+) -> Dict[str, Any]:
+    if "You will receive TWO inputs" not in system_instruction:
+        return _SINGLE_TRANSLATION_RESPONSE_SCHEMA
+    if "Violation Risk Score" in system_instruction:
+        return _MERGED_POST_RESPONSE_SCHEMA
+    return _MERGED_CONTENT_PAIR_RESPONSE_SCHEMA
+
+
 @lru_cache(maxsize=8)
 def _cached_generative_model(model_name: str, system_instruction: str) -> Any:
     """
@@ -61,6 +140,9 @@ def _cached_generative_model(model_name: str, system_instruction: str) -> Any:
         system_instruction=system_instruction,
         generation_config={
             "response_mime_type": "application/json",
+            "response_schema": _response_schema_for_system_instruction(
+                system_instruction
+            ),
             "temperature": 0.2,
         },
     )
