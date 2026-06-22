@@ -21,6 +21,28 @@ SAFETY FALLBACK:
 """
 
 
+_TAIWAN_CONTEXT_TRANSLATION_RULES = """
+### Taiwan Context and Proper-Noun Rules:
+- You are translating for a multilingual discussion forum operated by Radio Taiwan International (RTI), Taiwan.
+- The content is primarily related to Taiwan, including Taiwan government agencies, museums, public institutions, historical sites, organizations, and local places.
+- Translate all content according to Taiwan context unless the source text explicitly refers to another country.
+- Do not assume that terms such as 「中央」, 「國家」, 「國立」, or 「中華民國」 refer to the People's Republic of China.
+- Never add "China", "Chinese", "PRC", "People's Republic of China", or any equivalent country, institution, or sovereignty label unless it is explicitly present in the source text.
+- If the source refers to Mandarin or the Chinese language, translate the language name naturally, but do not turn it into a country or institutional affiliation.
+- When translating proper nouns, do not infer nationality, sovereignty, political affiliation, or country designation that is not explicitly stated in the source text.
+- Preserve the original meaning of proper nouns and institutions. If an official translation is unknown, translate the literal meaning instead of associating it with China.
+
+Mandatory glossary for en / vi / th / id target translations:
+- 「中央廣播電台」, 「中央廣播電臺」, and 「央廣」 MUST be translated exactly as "Radio Taiwan International (RTI)".
+- 「國家廣播文物館」 MUST be translated exactly as "National Radio Museum".
+- 「國立故宮博物院」 MUST be translated exactly as "National Palace Museum".
+- 「中華民國」 MUST be translated exactly as "Republic of China (Taiwan)".
+- For zh-tw target translations, preserve these Traditional Chinese proper nouns when the source text is Chinese.
+- Never translate 「中央廣播電台」, 「中央廣播電臺」, or 「央廣」 as "China National Radio".
+- Never translate 「國家廣播文物館」 as "Chinese National Radio Museum" or "China National Radio Museum".
+"""
+
+
 @lru_cache(maxsize=8)
 def _cached_generative_model(model_name: str, system_instruction: str) -> Any:
     """
@@ -144,6 +166,7 @@ Your task is to analyze a given text snippet and perform the following actions:
    - spamScore must be a number in [0, 1]
    - 0 means definitely not spam, 1 means definitely spam
 
+""" + _TAIWAN_CONTEXT_TRANSLATION_RULES + """
 ### Strict Constraints:
 - RESPONSE FORMAT: Return ONLY a valid JSON object. No Markdown blocks (```json), no pre-ambles, and no post-explanations.
 - LINE BREAKS: You MUST preserve the original paragraph structure and line breaks from the input text. Within JSON strings, represent line breaks using the literal `\n` character (escaped newline), and do NOT remove or collapse newlines.
@@ -202,6 +225,7 @@ For BODY:
 - Distinguish between "Political Criticism" (Lower score) and "Hate Speech" (Higher score).
 - Distinguish between "Venting Anger" (Medium score) and "Criminal Incitement" (High score).
 
+""" + _TAIWAN_CONTEXT_TRANSLATION_RULES + """
 ### Strict Constraints:
 - RESPONSE FORMAT: Return ONLY a valid JSON object. No Markdown blocks (```json), no pre-ambles, and no post-explanations.
 - LINE BREAKS: Preserve paragraph structure and line breaks in each translated string; use literal `\\n` in JSON strings where needed.
@@ -247,6 +271,7 @@ For BODY:
 1. Detect the original language (limited to: zh-tw, en, vi, th, id).
 2. Translate BODY into ALL five target languages: 'zh-tw', 'en', 'vi', 'th', 'id'.
 
+""" + _TAIWAN_CONTEXT_TRANSLATION_RULES + """
 ### Strict Constraints:
 - RESPONSE FORMAT: Return ONLY a valid JSON object. No Markdown blocks (```json), no pre-ambles, and no post-explanations.
 - LINE BREAKS: Preserve paragraph structure and line breaks in each translated string; use literal `\\n` in JSON strings where needed.

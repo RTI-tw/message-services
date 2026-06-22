@@ -114,6 +114,59 @@ def test_translate_title_and_content_merged_rejects_malformed_response(
         gt.translate_title_and_content_merged("a", "b", include_spam_for_body=False)
 
 
+def test_translation_prompts_include_taiwan_context_glossary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app import gemini_translate as gt
+
+    systems: list[str] = []
+
+    def fake_call(system: str, _user: str) -> dict:
+        systems.append(system)
+        if "You will receive TWO inputs" in system:
+            return _fake_gemini_merged_payload()
+        return {
+            "detect-lang": "zh-tw",
+            "translation": {
+                "zh-tw": "中央廣播電台",
+                "en": "Radio Taiwan International (RTI)",
+                "vi": "Radio Taiwan International (RTI)",
+                "th": "Radio Taiwan International (RTI)",
+                "id": "Radio Taiwan International (RTI)",
+            },
+            "spamScore": 0.0,
+        }
+
+    monkeypatch.setattr(gt, "_call_gemini_json", fake_call)
+
+    gt.translate_and_detect("中央廣播電台在國家廣播文物館")
+    gt.translate_title_and_content_merged(
+        "中央廣播電臺",
+        "央廣介紹中華民國與國立故宮博物院",
+        include_spam_for_body=True,
+    )
+    gt.translate_title_and_content_merged(
+        "中央廣播電臺",
+        "央廣介紹中華民國與國立故宮博物院",
+        include_spam_for_body=False,
+    )
+
+    assert len(systems) == 3
+    for system in systems:
+        assert "Radio Taiwan International (RTI)" in system
+        assert "中央廣播電台" in system
+        assert "中央廣播電臺" in system
+        assert "央廣" in system
+        assert "國家廣播文物館" in system
+        assert "National Radio Museum" in system
+        assert "中華民國" in system
+        assert "Republic of China (Taiwan)" in system
+        assert "國立故宮博物院" in system
+        assert "National Palace Museum" in system
+        assert "Do not assume" in system
+        assert "People's Republic of China" in system
+
+
 def test_translate_and_detect_retries_with_paraphrase_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
