@@ -167,6 +167,57 @@ def test_translation_prompts_include_taiwan_context_glossary(
         assert "People's Republic of China" in system
 
 
+def test_cached_generative_model_uses_json_response_schema(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app import gemini_translate as gt
+    import google.generativeai as genai
+
+    configs: list[dict] = []
+
+    class FakeModel:
+        def __init__(self, *, generation_config, **_kwargs) -> None:
+            configs.append(generation_config)
+
+    monkeypatch.setattr(
+        gt,
+        "get_settings",
+        lambda: SimpleNamespace(gemini_api_key="test-key"),
+    )
+    monkeypatch.setattr(genai, "configure", lambda **_kwargs: None)
+    monkeypatch.setattr(genai, "GenerativeModel", FakeModel)
+    gt._cached_generative_model.cache_clear()
+    try:
+        gt._cached_generative_model("gemini-test", gt._SYSTEM_PROMPT)
+        gt._cached_generative_model("gemini-test", gt._SYSTEM_PROMPT_MERGED_POST)
+        gt._cached_generative_model(
+            "gemini-test", gt._SYSTEM_PROMPT_MERGED_CONTENT
+        )
+
+        assert len(configs) == 3
+        assert all(
+            config["response_mime_type"] == "application/json" for config in configs
+        )
+        assert all("response_schema" in config for config in configs)
+
+        single_schema = configs[0]["response_schema"]
+        merged_post_schema = configs[1]["response_schema"]
+        merged_content_schema = configs[2]["response_schema"]
+
+        assert single_schema["required"] == ["detect-lang", "translation", "spamScore"]
+        assert set(merged_post_schema["required"]) == {"title", "content"}
+        assert (
+            "violationScore"
+            in merged_post_schema["properties"]["content"]["properties"]
+        )
+        assert (
+            "violationScore"
+            not in merged_content_schema["properties"]["content"]["properties"]
+        )
+    finally:
+        gt._cached_generative_model.cache_clear()
+
+
 def test_translate_and_detect_retries_with_paraphrase_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
