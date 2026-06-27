@@ -15,7 +15,7 @@ from .pubsub_client import publisher
 from .translation_job import (
     build_translation_log_entry,
     handle_translation_pubsub_payload,
-    is_non_retryable_translation_runtime_error,
+    non_retryable_translation_runtime_error_code,
 )
 
 logger = logging.getLogger(__name__)
@@ -231,13 +231,14 @@ async def pubsub_push_translation(request: Request):
         )
         return {}
     except RuntimeError as e:
-        if is_non_retryable_translation_runtime_error(e):
+        non_retryable_code = non_retryable_translation_runtime_error_code(e)
+        if non_retryable_code:
             logger.warning(
                 build_translation_log_entry(
                     "translation_push_skipped",
                     payload,
                     action="ack",
-                    error_code="gemini_response_format",
+                    error_code=non_retryable_code,
                     error_type=type(e).__name__,
                     error=str(e),
                 )
