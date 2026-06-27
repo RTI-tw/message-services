@@ -346,6 +346,8 @@ def _sync_post_or_content_translations(
     update_data: Dict[str, Any] = {}
     title = (source_title or "").strip()
     content = (source_text or "").strip()
+    has_provided_title = bool(title)
+    has_provided_content = bool(content)
     fetch_pair = (
         _fetch_post_source_texts
         if article_type == "post"
@@ -364,8 +366,17 @@ def _sync_post_or_content_translations(
             content = fetched_content
         if article_type == "post":
             current_status = _fetch_current_status(article_type, item_id)
-    elif article_type == "post" and current_status is None:
+    elif (
+        article_type == "post"
+        and current_status is None
+        and not (has_provided_title and has_provided_content)
+    ):
         current_status = _try_fetch_current_status(article_type, item_id)
+
+    if has_provided_title and has_provided_content:
+        current_status = _preflight_item_before_translation(
+            article_type, item_id, current_status
+        )
 
     if content and title:
         try:
@@ -415,12 +426,30 @@ _FETCH_CONFIG: Dict[ArticleType, Tuple[str, str, str]] = {
 }
 
 
-def _fetch_source_text(article_type: ArticleType, item_id: str) -> str:
-    query, node_key, field = _FETCH_CONFIG[article_type]
+def _fetch_existing_item(article_type: ArticleType, item_id: str) -> Dict[str, Any]:
+    query, node_key, _field = _FETCH_CONFIG[article_type]
     data = execute_gql(query, {"id": item_id})
     node = data.get(node_key)
     if not node:
         raise ValueError(f"{article_type} id={item_id} 不存在")
+    return node
+
+
+def _preflight_item_before_translation(
+    article_type: ArticleType,
+    item_id: str,
+    current_status: Optional[str],
+) -> Optional[str]:
+    node = _fetch_existing_item(article_type, item_id)
+    if article_type in ("post", "comment") and current_status is None:
+        status = node.get("status")
+        return str(status) if status else None
+    return current_status
+
+
+def _fetch_source_text(article_type: ArticleType, item_id: str) -> str:
+    _query, _node_key, field = _FETCH_CONFIG[article_type]
+    node = _fetch_existing_item(article_type, item_id)
     text = (node.get(field) or "").strip()
     if not text:
         raise ValueError(
@@ -433,11 +462,7 @@ def _fetch_current_status(article_type: ArticleType, item_id: str) -> Optional[s
     if article_type not in ("post", "comment"):
         return None
 
-    query, node_key, _field = _FETCH_CONFIG[article_type]
-    data = execute_gql(query, {"id": item_id})
-    node = data.get(node_key)
-    if not node:
-        raise ValueError(f"{article_type} id={item_id} 不存在")
+    node = _fetch_existing_item(article_type, item_id)
     status = node.get("status")
     return str(status) if status else None
 
@@ -484,12 +509,14 @@ def sync_translations_from_hook(
     else:
         text = (source_text or "").strip()
         current_status = (source_status or "").strip() or None
-        if text and article_type in ("post", "comment") and current_status is None:
-            current_status = _try_fetch_current_status(article_type, item_id)
         if not text:
             text = _fetch_source_text(article_type, item_id)
             if article_type in ("post", "comment"):
                 current_status = _fetch_current_status(article_type, item_id)
+        else:
+            current_status = _preflight_item_before_translation(
+                article_type, item_id, current_status
+            )
         gemini_result = translate_and_detect(text)
         update_data = _build_update_data(
             article_type,
