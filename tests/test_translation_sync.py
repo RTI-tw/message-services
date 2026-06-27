@@ -35,6 +35,39 @@ def _fake_gemini_merged_payload() -> dict:
     }
 
 
+def _fake_existing_post_execute_gql(status: str = "pending"):
+    def fake_execute_gql(query: str, variables: dict) -> dict:
+        if "post(where:" in query:
+            return {
+                "post": {
+                    "id": variables["id"],
+                    "title": "標",
+                    "content": "文",
+                    "language": "zh",
+                    "status": status,
+                }
+            }
+        raise AssertionError(f"unexpected query: {query}")
+
+    return fake_execute_gql
+
+
+def _fake_existing_content_execute_gql():
+    def fake_execute_gql(query: str, variables: dict) -> dict:
+        if "content(where:" in query:
+            return {
+                "content": {
+                    "id": variables["id"],
+                    "title": "title",
+                    "content": "body",
+                    "language": "zh",
+                }
+            }
+        raise AssertionError(f"unexpected query: {query}")
+
+    return fake_execute_gql
+
+
 class _FakeGeminiCandidate:
     def __init__(self, finish_reason: int | None) -> None:
         self.finish_reason = finish_reason
@@ -343,6 +376,10 @@ def test_sync_post_or_content_calls_merged_once_when_title_and_body(
         "app.hooks_translate._fetch_current_status",
         lambda _article_type, _item_id: "pending",
     )
+    monkeypatch.setattr(
+        "app.hooks_translate.execute_gql",
+        _fake_existing_post_execute_gql(),
+    )
 
     data = _sync_post_or_content_translations(
         "post",
@@ -368,6 +405,10 @@ def test_sync_post_or_content_uses_status_when_sources_provided(
         MagicMock(return_value="pending"),
     )
     monkeypatch.setattr(
+        "app.hooks_translate.execute_gql",
+        _fake_existing_post_execute_gql(),
+    )
+    monkeypatch.setattr(
         "app.hooks_translate.translate_title_and_content_merged",
         lambda *_args, **_kwargs: _fake_gemini_merged_payload(),
     )
@@ -391,6 +432,10 @@ def test_sync_post_or_content_prefers_source_status_when_sources_provided(
     monkeypatch.setattr(
         "app.hooks_translate._fetch_current_status",
         MagicMock(side_effect=AssertionError("status should come from payload")),
+    )
+    monkeypatch.setattr(
+        "app.hooks_translate.execute_gql",
+        _fake_existing_post_execute_gql(status="published"),
     )
     monkeypatch.setattr(
         "app.hooks_translate.translate_title_and_content_merged",
@@ -423,6 +468,10 @@ def test_sync_post_or_content_falls_back_when_merged_translation_is_malformed(
     monkeypatch.setattr(
         "app.hooks_translate._fetch_current_status",
         MagicMock(return_value="pending"),
+    )
+    monkeypatch.setattr(
+        "app.hooks_translate.execute_gql",
+        _fake_existing_post_execute_gql(),
     )
 
     def fake_detect(text: str) -> dict:
@@ -467,29 +516,65 @@ def test_sync_post_or_content_falls_back_when_merged_translation_is_malformed(
     assert data["title_en"] == "title"
 
 
-def test_sync_post_or_content_ignores_missing_status_when_sources_provided(
+def test_sync_post_or_content_rejects_missing_item_before_gemini(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.hooks_translate import _sync_post_or_content_translations
 
-    monkeypatch.setattr(
-        "app.hooks_translate._fetch_current_status",
-        MagicMock(side_effect=ValueError("post id=56 不存在")),
-    )
+    def fake_execute_gql(query: str, variables: dict) -> dict:
+        if "post(where:" in query:
+            assert variables == {"id": "56"}
+            return {"post": None}
+        raise AssertionError(f"unexpected query: {query}")
+
+    gemini = MagicMock(side_effect=AssertionError("Gemini should not be called"))
+    monkeypatch.setattr("app.hooks_translate.execute_gql", fake_execute_gql)
     monkeypatch.setattr(
         "app.hooks_translate.translate_title_and_content_merged",
-        lambda *_args, **_kwargs: _fake_gemini_merged_payload(),
+        gemini,
     )
+    monkeypatch.setattr("app.hooks_translate.translate_and_detect", gemini)
 
-    data = _sync_post_or_content_translations(
-        "post",
-        "56",
-        "文",
-        "標",
+    with pytest.raises(ValueError, match="post id=56 不存在"):
+        _sync_post_or_content_translations(
+            "post",
+            "56",
+            "文",
+            "標",
+        )
+
+    gemini.assert_not_called()
+
+
+def test_sync_post_with_provided_sources_checks_item_before_gemini(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.hooks_translate import sync_translations_from_hook
+
+    def fake_execute_gql(query: str, variables: dict) -> dict:
+        if "post(where:" in query:
+            assert variables == {"id": "missing-post"}
+            return {"post": None}
+        raise AssertionError(f"unexpected query: {query}")
+
+    gemini = MagicMock(side_effect=AssertionError("Gemini should not be called"))
+    monkeypatch.setattr("app.hooks_translate.execute_gql", fake_execute_gql)
+    monkeypatch.setattr(
+        "app.hooks_translate.translate_title_and_content_merged",
+        gemini,
     )
+    monkeypatch.setattr("app.hooks_translate.translate_and_detect", gemini)
 
-    assert data["spamScore"] == pytest.approx(0.42)
-    assert "status" not in data
+    with pytest.raises(ValueError, match="post id=missing-post 不存在"):
+        sync_translations_from_hook(
+            article_type="post",
+            item_id="missing-post",
+            source_text="body",
+            source_title="title",
+            source_status="pending",
+        )
+
+    gemini.assert_not_called()
 
 
 def test_sync_post_or_content_calls_detect_only_when_content_only(
@@ -630,6 +715,10 @@ def test_sync_post_or_content_content_entity_no_spam_in_merge(
     monkeypatch.setattr(
         "app.hooks_translate.translate_and_detect",
         MagicMock(side_effect=AssertionError),
+    )
+    monkeypatch.setattr(
+        "app.hooks_translate.execute_gql",
+        _fake_existing_content_execute_gql(),
     )
 
     _sync_post_or_content_translations("content", "x", "body", "title")
@@ -809,6 +898,32 @@ def test_sync_comment_uses_status_when_source_text_provided(
 
     assert len(updates) == 1
     assert updates[0]["status"] == "published"
+
+
+def test_sync_comment_with_provided_source_checks_item_before_gemini(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.hooks_translate import sync_translations_from_hook
+
+    def fake_execute_gql(query: str, variables: dict) -> dict:
+        if "comment(where:" in query:
+            assert variables == {"id": "missing-comment"}
+            return {"comment": None}
+        raise AssertionError(f"unexpected query: {query}")
+
+    gemini = MagicMock(side_effect=AssertionError("Gemini should not be called"))
+    monkeypatch.setattr("app.hooks_translate.execute_gql", fake_execute_gql)
+    monkeypatch.setattr("app.hooks_translate.translate_and_detect", gemini)
+
+    with pytest.raises(ValueError, match="comment id=missing-comment 不存在"):
+        sync_translations_from_hook(
+            article_type="comment",
+            item_id="missing-comment",
+            source_text="原文",
+            source_status="pending",
+        )
+
+    gemini.assert_not_called()
 
 
 def test_sync_comment_rejects_high_risk_comment(
