@@ -11,7 +11,7 @@ from app.gemini_translate import GeminiBlockedError
 from app.translation_job import (
     build_translation_log_entry,
     handle_translation_pubsub_payload,
-    is_non_retryable_translation_runtime_error,
+    non_retryable_translation_runtime_error_code,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -109,13 +109,14 @@ def main() -> None:
                 payload_for_log = (
                     payload if "payload" in locals() and isinstance(payload, dict) else {}
                 )
-                if is_non_retryable_translation_runtime_error(exc):
+                non_retryable_code = non_retryable_translation_runtime_error_code(exc)
+                if non_retryable_code:
                     logger.warning(
                         build_translation_log_entry(
                             "translation_sync_skipped",
                             payload_for_log,
                             action="ack",
-                            error_code="gemini_response_format",
+                            error_code=non_retryable_code,
                             error_type=type(exc).__name__,
                             error=str(exc),
                         )

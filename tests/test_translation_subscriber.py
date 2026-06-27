@@ -77,11 +77,28 @@ def test_handle_translation_invalid_payload() -> None:
 
 
 def test_gemini_malformed_json_runtime_error_is_non_retryable() -> None:
-    from app.translation_job import is_non_retryable_translation_runtime_error
-
-    assert is_non_retryable_translation_runtime_error(
-        RuntimeError("Gemini 回傳非合法 JSON: Expecting ',' delimiter")
+    from app.translation_job import (
+        is_non_retryable_translation_runtime_error,
+        non_retryable_translation_runtime_error_code,
     )
+
+    exc = RuntimeError("Gemini 回傳非合法 JSON: Expecting ',' delimiter")
+    assert is_non_retryable_translation_runtime_error(exc)
+    assert non_retryable_translation_runtime_error_code(exc) == "gemini_response_format"
     assert not is_non_retryable_translation_runtime_error(
         RuntimeError("GraphQL error: upstream unavailable")
     )
+
+
+def test_keystone_update_access_denied_runtime_error_is_non_retryable() -> None:
+    from app.translation_job import (
+        is_non_retryable_translation_runtime_error,
+        non_retryable_translation_runtime_error_code,
+    )
+
+    exc = RuntimeError(
+        "GraphQL error: [{'message': 'Access denied: You cannot update that "
+        "Post - it may not exist', 'extensions': {'code': 'KS_ACCESS_DENIED'}}]"
+    )
+    assert is_non_retryable_translation_runtime_error(exc)
+    assert non_retryable_translation_runtime_error_code(exc) == "keystone_access_denied"
