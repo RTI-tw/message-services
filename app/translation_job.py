@@ -22,12 +22,28 @@ _NON_RETRYABLE_TRANSLATION_RUNTIME_PATTERNS = (
 )
 
 
-def is_non_retryable_translation_runtime_error(exc: RuntimeError) -> bool:
-    """Gemini response-shape failures are bad model output, not useful Pub/Sub retries."""
-    message = str(exc)
-    return any(
-        pattern in message for pattern in _NON_RETRYABLE_TRANSLATION_RUNTIME_PATTERNS
+def _is_keystone_update_access_denied(message: str) -> bool:
+    return (
+        "GraphQL error" in message
+        and "KS_ACCESS_DENIED" in message
+        and "Access denied: You cannot update that" in message
     )
+
+
+def non_retryable_translation_runtime_error_code(exc: RuntimeError) -> str | None:
+    message = str(exc)
+    if any(
+        pattern in message for pattern in _NON_RETRYABLE_TRANSLATION_RUNTIME_PATTERNS
+    ):
+        return "gemini_response_format"
+    if _is_keystone_update_access_denied(message):
+        return "keystone_access_denied"
+    return None
+
+
+def is_non_retryable_translation_runtime_error(exc: RuntimeError) -> bool:
+    """Permanent translation job failures are not useful Pub/Sub retries."""
+    return non_retryable_translation_runtime_error_code(exc) is not None
 
 
 def handle_translation_pubsub_payload(payload: Dict[str, Any]) -> Dict[str, Any]:

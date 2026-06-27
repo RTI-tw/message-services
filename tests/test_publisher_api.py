@@ -208,3 +208,31 @@ def test_translation_push_acks_gemini_malformed_json(
 
     assert res.status_code == 200
     assert res.json() == {}
+
+
+def test_translation_push_acks_keystone_update_access_denied(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.main.handle_translation_pubsub_payload",
+        MagicMock(
+            side_effect=RuntimeError(
+                "GraphQL error: [{'message': 'Access denied: You cannot update that "
+                "Post - it may not exist', 'extensions': {'code': 'KS_ACCESS_DENIED'}}]"
+            )
+        ),
+    )
+    payload = {
+        "type": "post",
+        "id": "122",
+        "source_text": "body",
+        "source_title": "title",
+    }
+    encoded = base64.b64encode(
+        json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    ).decode("ascii")
+
+    res = client.post("/pubsub/push/translation", json={"message": {"data": encoded}})
+
+    assert res.status_code == 200
+    assert res.json() == {}
