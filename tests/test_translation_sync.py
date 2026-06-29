@@ -962,3 +962,59 @@ def test_sync_comment_rejects_high_risk_comment(
 
     assert len(updates) == 1
     assert updates[0]["status"] == "reject"
+
+
+def test_sync_event_updates_notice_translations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.hooks_translate import sync_translations_from_hook
+
+    updates: list[dict] = []
+
+    def fake_execute_gql(query: str, variables: dict) -> dict:
+        if "event(where:" in query:
+            return {
+                "event": {
+                    "id": variables["id"],
+                    "notice": "請準時入場",
+                }
+            }
+        if "updateEvent" in query:
+            updates.append(variables["data"])
+            return {"updateEvent": {"id": variables["id"]}}
+        raise AssertionError(f"unexpected query: {query}")
+
+    monkeypatch.setattr("app.hooks_translate.execute_gql", fake_execute_gql)
+    monkeypatch.setattr(
+        "app.hooks_translate.translate_and_detect",
+        lambda _text: {
+            "detect-lang": "zh-tw",
+            "translation": {
+                "zh-tw": "請準時入場",
+                "en": "Please arrive on time",
+                "vi": "Vui lòng đến đúng giờ",
+                "th": "กรุณามาถึงตรงเวลา",
+                "id": "Harap datang tepat waktu",
+            },
+        },
+    )
+
+    result = sync_translations_from_hook(article_type="event", item_id="event-1")
+
+    assert result["type"] == "event"
+    assert result["updated_fields"] == [
+        "notice_zh",
+        "notice_en",
+        "notice_vi",
+        "notice_th",
+        "notice_id",
+    ]
+    assert updates == [
+        {
+            "notice_zh": "請準時入場",
+            "notice_en": "Please arrive on time",
+            "notice_vi": "Vui lòng đến đúng giờ",
+            "notice_th": "กรุณามาถึงตรงเวลา",
+            "notice_id": "Harap datang tepat waktu",
+        }
+    ]

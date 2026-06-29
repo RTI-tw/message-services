@@ -14,6 +14,7 @@ ArticleType = Literal[
     "pollOption",
     "content",
     "forbiddenKeyword",
+    "event",
 ]
 
 LOW_RISK_SPAM_SCORE = 0.5
@@ -93,9 +94,26 @@ query ForbiddenKeywordForTranslate($id: ID!) {
 }
 """
 
+QUERY_EVENT = """
+query EventForTranslate($id: ID!) {
+  event(where: { id: $id }) {
+    id
+    notice
+  }
+}
+"""
+
 MUTATION_UPDATE_POST = """
 mutation UpdatePostTranslations($id: ID!, $data: PostUpdateInput!) {
   updatePost(where: { id: $id }, data: $data) {
+    id
+  }
+}
+"""
+
+MUTATION_UPDATE_EVENT = """
+mutation UpdateEventTranslations($id: ID!, $data: EventUpdateInput!) {
+  updateEvent(where: { id: $id }, data: $data) {
     id
   }
 }
@@ -170,7 +188,7 @@ def gemini_detect_to_keystone_language(detect: Optional[str]) -> Optional[str]:
 def _translation_to_prefixed_fields(
     field_prefix: str, translation: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """Gemini translation keys -> Keystone GraphQL snake_case（content_zh / name_zh / title_zh / text_zh / word_zh）。"""
+    """Gemini translation keys -> Keystone GraphQL snake_case（content_zh / name_zh / title_zh / text_zh / word_zh / notice_zh）。"""
     out: Dict[str, Any] = {
         f"{field_prefix}_zh": translation.get("zh-tw")
         if "zh-tw" in translation
@@ -194,6 +212,8 @@ def _field_prefix_for_entity(entity: ArticleType) -> str:
         return "text"
     if entity == "forbiddenKeyword":
         return "word"
+    if entity == "event":
+        return "notice"
     raise ValueError(f"unknown entity: {entity}")
 
 
@@ -423,6 +443,7 @@ _FETCH_CONFIG: Dict[ArticleType, Tuple[str, str, str]] = {
     "pollOption": (QUERY_POLL_OPTION, "pollOption", "text"),
     "content": (QUERY_CONTENT, "content", "content"),
     "forbiddenKeyword": (QUERY_FORBIDDEN_KEYWORD, "forbiddenKeyword", "word"),
+    "event": (QUERY_EVENT, "event", "notice"),
 }
 
 
@@ -542,6 +563,8 @@ def sync_translations_from_hook(
             MUTATION_UPDATE_FORBIDDEN_KEYWORD,
             {"id": item_id, "data": update_data},
         )
+    elif article_type == "event":
+        execute_gql(MUTATION_UPDATE_EVENT, {"id": item_id, "data": update_data})
     else:
         raise ValueError(f"unsupported article_type: {article_type}")
 
