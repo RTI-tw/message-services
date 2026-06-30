@@ -186,6 +186,7 @@ class KeystoneHookSyncTranslationRequest(BaseModel):
         "pollOption",
         "content",
         "forbiddenKeyword",
+        "event",
     ] = Field(
         validation_alias="type",
         serialization_alias="type",
