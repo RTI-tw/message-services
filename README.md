@@ -234,12 +234,18 @@ pytest
 
 `POST /hooks/sync-translations`（需 `GEMINI_API_KEY`、`KEYSTONE_GQL_ENDPOINT`）
 
-依 forum-cms `Post.ts` / `comment.ts` 的原文欄位語意：
+依 forum-cms 各 list 的原文欄位語意：
 
 - `post`：翻譯 `title` 與 `content`，更新 `title_*` 與 `content_*`
 - `comment`：翻譯 `content`，更新 `content_*`
+- `topic`：翻譯 `name`，更新 `name_*`
+- `poll`：翻譯 `title`，更新 `title_*`
+- `pollOption`：翻譯 `text`，更新 `text_*`
+- `content`：翻譯 `title` 與 `content`，更新 `title_*` 與 `content_*`
+- `forbiddenKeyword`：翻譯 `word`，更新 `word_*`
+- `event`：翻譯 `notice`，更新 `notice_*`
 
-並以 GraphQL `updatePost` / `updateComment` 同步更新 `language` 與各語系欄位（Keystone 6 GraphQL snake_case）。
+並以對應的 GraphQL `update*` mutation 同步更新各語系欄位（Keystone 6 GraphQL snake_case）。支援 `language` 欄位的實體也會同步更新偵測語言。
 
 並會同時估算 `spamScore`（0–1）寫回 Keystone 的 `spamScore` 欄位。翻譯同步目前也會依 `spamScore` 做基本審核欄位更新：
 
