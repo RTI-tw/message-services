@@ -301,6 +301,15 @@ async def keystone_hook_sync_translations(
             source_status=body.source_status,
         )
     except ValueError as e:
+        logger.warning(
+            build_translation_log_entry(
+                "hooks_sync_translations_bad_request",
+                body.model_dump(mode="json", by_alias=True),
+                status_code=400,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+        )
         raise HTTPException(status_code=400, detail=str(e)) from e
     except RuntimeError as e:
         logger.warning("hooks/sync-translations RuntimeError: %s", e)
