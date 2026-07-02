@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 from unittest.mock import MagicMock
 
 import pytest
@@ -181,6 +182,39 @@ def test_hooks_sync_translations_forwards_source_status(
         "source_title": "title",
         "source_status": "pending",
     }
+
+
+def test_hooks_sync_translations_logs_value_error_context(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(
+        "app.main.sync_translations_from_hook",
+        MagicMock(side_effect=ValueError("post id=p1 不存在")),
+    )
+
+    with caplog.at_level(logging.WARNING, logger="app.main"):
+        res = client.post(
+            "/hooks/sync-translations",
+            json={
+                "type": "post",
+                "id": "p1",
+                "source_text": "body",
+                "source_title": "title",
+            },
+        )
+
+    assert res.status_code == 400
+    log_messages = [record.getMessage() for record in caplog.records]
+    assert any(
+        '"event": "hooks_sync_translations_bad_request"' in message
+        and '"article_type": "post"' in message
+        and '"item_id": "p1"' in message
+        and '"error": "post id=p1 不存在"' in message
+        and '"has_source_text": true' in message
+        and '"has_source_title": true' in message
+        and '"status_code": 400' in message
+        for message in log_messages
+    )
 
 
 def test_translation_push_acks_gemini_malformed_json(
